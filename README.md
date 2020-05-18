@@ -68,7 +68,8 @@ Go std library, esp:
 - [syncronization primitives](https://golang.org/pkg/sync/)
 - [timers/tickers](https://gobyexample.com/timers)
 
-Question: do Go devs actually use `net/http` directly? (seems like yes) Is there really not a framework to make it easier to build routers such that your handlers don't have to be aware of things like HTTP verbs and whatnot?
+~~Question: do Go devs actually use `net/http` directly? (seems like yes) Is there really not a framework to make it easier to build routers such that your handlers don't have to be aware of things like HTTP verbs and whatnot?~~
+Answer: Dunno about how common one is vs the other (can guess based off of GitHub stars for orders of magnitude), but there are a few. [gorilla/mux](https://github.com/gorilla/mux) seems to be the right combination of popular and well-documented, so I'll probably add that in.
 
 [Go patterns](https://golang.org/doc/effective_go.html)
 
