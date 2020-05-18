@@ -100,7 +100,7 @@ func (n *Node) startAppendTicker() {
 				return
 			case <-n.appendTicker.C:
 				// placeholder for generating append requests
-				fmt.Print(".")
+				// fmt.Print(".")
 				continue
 			}
 		}
@@ -411,6 +411,7 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
 	port := "8080"
 
 	node := NewNode(port)
