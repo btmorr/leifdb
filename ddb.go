@@ -296,13 +296,15 @@ func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
 		n.Term = n.Term + 1
 		fmt.Println("Expired term vote received. New term: ", n.Term)
 		w.WriteHeader(http.StatusConflict)
-		vote := VoteResponse{Term: n.Term}
+		vote := VoteResponse{Term: n.Term, VoteGranted: false}
 		b, _ := json.Marshal(vote)
 		fmt.Fprintln(w, string(b))
 	} else {
 		fmt.Println("Voting for ", addr, " for term ", body.Term)
 		n.Term = body.Term
-		vote := VoteResponse{Term: n.Term}
+		n.votedFor = addr
+		// todo: check candidate's log details
+		vote := VoteResponse{Term: n.Term, VoteGranted: true}
 		b, _ := json.Marshal(vote)
 		fmt.Fprintln(w, string(b))
 	}
