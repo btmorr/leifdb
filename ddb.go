@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"time"
+	"io/ioutil"
 	"strings"
 	"math/rand"
 	"encoding/json"
@@ -57,19 +58,45 @@ func NewNode() *Node {
 	return &n
 }
 
+type ErrorResponse struct {
+	Error string  `json:"error"`
+}
+
 // Methods for handling data read/write
 
 type DataBody struct {
-	Value string
+	Value string  `json:"value"`
+}
+
+type WriteResponse struct {
+	Value string  `json:"value"`
 }
 
 func (n *Node) handleDataWrite(w http.ResponseWriter, r *http.Request) {
-	d := json.NewDecoder(r.Body)
-	data := new(DataBody)
-	d.Decode(&data)
-	fmt.Println("\tBody: ", *data)
+	raw, err1 := ioutil.ReadAll(r.Body)
+	if err1 != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		error := ErrorResponse{Error: "Body required"}
+		b, _ := json.Marshal(error)
+		fmt.Fprintln(w, string(b))
+		return
+	}
+
+	var data DataBody
+	err2 := json.Unmarshal(raw, &data)
+	if err2 != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		error := ErrorResponse{Error: "Invalid JSON body"}
+		b, _ := json.Marshal(error)
+		fmt.Fprintln(w, string(b))
+		return
+	}
+
+	fmt.Println("New value: ", data.Value)
 	n.Value = data.Value
-	fmt.Fprintf(w, "Ok")
+	res := WriteResponse{Value: n.Value}
+	b, _ := json.Marshal(res)
+	fmt.Fprintln(w, string(b))
 }
 
 func (n Node) handleDataRead(w http.ResponseWriter, r *http.Request) {
@@ -78,12 +105,15 @@ func (n Node) handleDataRead(w http.ResponseWriter, r *http.Request) {
 
 func (n *Node) handleData(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[data] ", r.Method, r.URL.Path)
+	w.Header().Set("Content-Type", "application/json")
+
 	if r.Method == http.MethodPost {
 		n.handleDataWrite(w, r)
 	} else if r.Method == http.MethodGet {
 		n.handleDataRead(w, r)
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
+
 		fmt.Fprintln(w, "Unsupported verb", r.Method)
 	}
 }
@@ -91,7 +121,11 @@ func (n *Node) handleData(w http.ResponseWriter, r *http.Request) {
 // Methods for handling Raft protocol interactions
 
 type VoteBody struct {
-	Term int
+	Term int  `json:"term"`
+}
+
+type VoteResponse struct {
+	Term int  `json:"term"`
 }
 
 func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
@@ -101,38 +135,65 @@ func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Added ", addr, " to known nodes")
 	fmt.Println("Nodes: ", n.otherNodes)
 
-	d := json.NewDecoder(r.Body)
-	body := new(VoteBody)
-	d.Decode(&body)
-	fmt.Println("\tTerm: ", *body)
+	raw, err1 := ioutil.ReadAll(r.Body)
+	if err1 != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		error := ErrorResponse{Error: "Body required"}
+		b, _ := json.Marshal(error)
+		fmt.Fprintln(w, string(b))
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
+	var body VoteBody
+	err2 := json.Unmarshal(raw, &body)
+	if err2 != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		error := ErrorResponse{Error: "Invalid JSON body"}
+		b, _ := json.Marshal(error)
+		fmt.Fprintln(w, string(b))
+		return
+	}
+	fmt.Println("\tProposed term: ", body.Term)
 	
 	if body.Term <= n.Term {
 		// Use 409 Conflict to represent invalid term
 		n.Term = n.Term + 1
 		fmt.Println("Expired term vote received. New term: ", n.Term)
 		w.WriteHeader(http.StatusConflict)
-		fmt.Fprintln(w, "Conflict: invalid term")
+		vote := VoteResponse{Term: n.Term}
+		b, _ := json.Marshal(vote)
+		fmt.Fprintln(w, string(b))
 	} else {
 		fmt.Println("Voting for ", addr, " for term ", body.Term)
 		n.Term = body.Term
-		fmt.Fprintln(w, "Accepted")
+		vote := VoteResponse{Term: n.Term}
+		b, _ := json.Marshal(vote)
+		fmt.Fprintln(w, string(b))
 	}
 }
 
+type AppendResponse struct {
+	Status string  `json:"status"`
+}
+
 func (n *Node) handleAppendLogsRequest(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Ok")
+	w.Header().Set("Content-Type", "application/json")
+	res := AppendResponse{Status: "Ok"}
+	b, _ := json.Marshal(res)
+	fmt.Fprintln(w, string(b))
 }
 
 func (n *Node) handleVote(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[vote] ", r.Method, r.URL.Path)
-	 if r.Method == http.MethodPost {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method == http.MethodPost {
 		// This is a request for Vote
 		n.handleVoteRequest(w, r)
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintln(w, "Unsupported verb", r.Method)
+		error := ErrorResponse{Error: "Unsupported HTTP verb " + r.Method}
+		b, _ := json.Marshal(error)
+		fmt.Fprintln(w, string(b))
 	}
 }
 
@@ -144,8 +205,15 @@ func(n *Node) handleStop(w http.ResponseWriter, r *http.Request) {
 
 // Other stuff
 
+type HealthResponse struct {
+	Status string  `json:"status"`
+}
+
 func handleHealth(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Ok")
+	w.Header().Set("Content-Type", "application/json")
+	res := HealthResponse{Status: "Ok"}
+	b, _ := json.Marshal(res)
+	fmt.Fprintln(w, string(b))
 }
 
 func main() {
