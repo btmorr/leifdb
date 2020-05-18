@@ -321,13 +321,6 @@ func (n *Node) handleVote(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (n *Node) handleStop(w http.ResponseWriter, r *http.Request) {
-	// this is a debug fn--rip out this and the endpoint
-	fmt.Println("[stop] ", r.Method, r.URL.Path)
-	n.electionTimer.Stop()
-	fmt.Fprintln(w, "Ok")
-}
-
 // Other stuff
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -348,7 +341,6 @@ func main() {
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/vote", node.handleVote)
 	http.HandleFunc("/append", node.handleAppend)
-	http.HandleFunc("/stop", node.handleStop)
 	http.HandleFunc("/", node.handleData)
 
 	fmt.Println("Server listening on port " + port)
