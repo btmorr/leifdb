@@ -43,7 +43,10 @@ func (n *Node) doElection() bool {
 }
 
 func NewNode() *Node {
-	timeout := time.Duration((rand.Int()%150)+150) * time.Millisecond
+	lowerBound := 150
+	upperBound := 300
+	timeout := time.Duration((rand.Int()%lowerBound)+(upperBound-lowerBound)) * time.Millisecond
+
 	n := Node{
 		Value:           "",
 		electionTimeout: timeout,
@@ -51,10 +54,12 @@ func NewNode() *Node {
 		State:           FOLLOWER,
 		Term:            0,
 		otherNodes:      make(map[string]bool)}
+
 	go func() {
 		<-n.electionTimer.C
 		n.doElection()
 	}()
+	
 	return &n
 }
 
@@ -176,7 +181,8 @@ type AppendResponse struct {
 	Status string `json:"status"`
 }
 
-func (n *Node) handleAppendLogsRequest(w http.ResponseWriter, r *http.Request) {
+func (n *Node) handleAppend(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("[logs] ", r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
 	res := AppendResponse{Status: "Ok"}
 	b, _ := json.Marshal(res)
@@ -199,6 +205,7 @@ func (n *Node) handleVote(w http.ResponseWriter, r *http.Request) {
 
 func (n *Node) handleStop(w http.ResponseWriter, r *http.Request) {
 	// this is a debug fn--rip out this and the endpoint
+	fmt.Println("[stop] ", r.Method, r.URL.Path)
 	n.electionTimer.Stop()
 	fmt.Fprintln(w, "Ok")
 }
@@ -210,6 +217,7 @@ type HealthResponse struct {
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("[health] ", r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
 	res := HealthResponse{Status: "Ok"}
 	b, _ := json.Marshal(res)
@@ -224,10 +232,11 @@ func main() {
 
 	// t1.Stop()
 
-	fmt.Println(fmt.Sprintf("Server listening on port %s", port))
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/vote", node.handleVote)
 	http.HandleFunc("/stop", node.handleStop)
 	http.HandleFunc("/", node.handleData)
+
+	fmt.Println("Server listening on port " + port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }
