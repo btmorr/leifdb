@@ -28,31 +28,3 @@ To read the current value:
 ```
 curl localhost:8080/
 ```
-
-## Manual raft requests
-
-### Vote
-
-Request a vote (start an election for the new term):
-
-```
-curl -i -X POST localhost:8080/ -d '{"term": 1}'
-```
-
-A 200 response means that the other node voted "yay". A 4xx response means that the request was rejected (409 for past term, others for invalid requests).
-
-### Health
-
-Health check:
-
-```
-curl localhost:8080/health
-```
-
-### Append
-
-[not yet implemented]
-
-### Commit
-
-[not yet implemented]
