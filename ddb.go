@@ -38,7 +38,7 @@ func (n *Node) doElection() bool {
 	n.Term = n.Term + 1
 	fmt.Println("\tNew Term: ", n.Term)
 	fmt.Println("\tN other nodes: ", len(n.otherNodes))
-	fmt.Println("\tVotes needed: ")
+	fmt.Println("\tVotes needed: ", (len(n.otherNodes)/2)+1)
 	return true
 }
 
@@ -59,7 +59,7 @@ func NewNode() *Node {
 		<-n.electionTimer.C
 		n.doElection()
 	}()
-	
+
 	return &n
 }
 
