@@ -1,13 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
-	"strings"
+
+	// "strings"
 	"time"
 )
 
@@ -26,35 +28,129 @@ const (
 
 type Node struct {
 	Value           string
+	NodeId          string
 	electionTimeout time.Duration
 	electionTimer   *time.Timer
 	State           Role
 	Term            int
+	votedFor        string
 	otherNodes      map[string]bool
 }
 
-func (n *Node) doElection() bool {
+// Data types for [un]marshalling JSON
+
+// Common error type for all endpoints
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+type WriteBody struct {
+	Value string `json:"value"`
+}
+
+type WriteResponse struct {
+	Value string `json:"value"`
+}
+
+type VoteBody struct {
+	Term         int    `json:"term"`
+	CandidateId  string `json:"candidateId"`
+	LastLogIndex int    `json:"lastLogIndex"`
+	LastLogTerm  int    `json:"lastLogTerm"`
+}
+
+type VoteResponse struct {
+	Term        int  `json:"term"`
+	VoteGranted bool `json:"voteGranted"`
+}
+
+type AppendBody struct {
+}
+
+type AppendResponse struct {
+	Status string `json:"status"`
+}
+
+// /health is a GET endpoint, so no Body type
+type HealthResponse struct {
+	Status string `json:"status"`
+}
+
+// Client methods for managing raft state
+
+func (n Node) requestVote(host string, term int) (bool, error) {
+	uri := "http://" + host + "/vote"
+	body := VoteBody{
+		Term:         term,
+		CandidateId:  n.NodeId,
+		LastLogIndex: 0,
+		LastLogTerm:  0}
+
+	b, _ := json.Marshal(body)
+	br := bytes.NewReader(b)
+
+	resp, _ := http.Post(uri, "application/json", br)
+
+	raw, err1 := ioutil.ReadAll(resp.Body)
+	if err1 != nil {
+		return false, err1
+	}
+
+	var vote VoteResponse
+	err2 := json.Unmarshal(raw, &vote)
+
+	return vote.VoteGranted, err2
+}
+
+func (n *Node) doElection() {
 	fmt.Println("Starting Election")
+	n.State = CANDIDATE
 	n.Term = n.Term + 1
 	numNodes := len(n.otherNodes)
-	majority := (numNodes/2)+1
+	majority := (numNodes / 2) + 1
+
 	fmt.Println("\tNew Term: ", n.Term)
 	fmt.Println("\tN other nodes: ", len(n.otherNodes))
 	fmt.Println("\tVotes needed: ", majority)
-	return true
+
+	n.resetElectionTimer()
+	numVotes := 1
+	for k, _ := range n.otherNodes {
+		vote, _ := n.requestVote(k, n.Term)
+		if vote {
+			numVotes = numVotes + 1
+		}
+	}
+	if numVotes >= majority {
+		fmt.Println(
+			"Election succeeded [",
+			numVotes, " out of ", majority,
+			"]")
+		n.State = LEADER
+		n.electionTimer.Stop()
+	} else {
+		fmt.Println(
+			"Election failed [",
+			numVotes, " out of ", majority,
+			"]")
+		n.State = FOLLOWER
+	}
 }
 
-func NewNode() *Node {
+func NewNode(port string) *Node {
 	lowerBound := 150
 	upperBound := 300
-	timeout := time.Duration((rand.Int()%lowerBound)+(upperBound-lowerBound)) * time.Millisecond
+	ms := (rand.Int() % lowerBound) + (upperBound - lowerBound)
+	timeout := time.Duration(ms) * time.Millisecond
 
 	n := Node{
 		Value:           "",
+		NodeId:          port,
 		electionTimeout: timeout,
 		electionTimer:   time.NewTimer(timeout),
 		State:           FOLLOWER,
 		Term:            0,
+		votedFor:        "",
 		otherNodes:      make(map[string]bool)}
 
 	go func() {
@@ -65,21 +161,10 @@ func NewNode() *Node {
 	return &n
 }
 
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
-// Methods for handling data read/write
-
-type DataBody struct {
-	Value string `json:"value"`
-}
-
-type WriteResponse struct {
-	Value string `json:"value"`
-}
+// Server methods for handling data read/write
 
 func (n *Node) handleDataWrite(w http.ResponseWriter, r *http.Request) {
+	// revise to log-append / commit protocol once elections work
 	raw, err1 := ioutil.ReadAll(r.Body)
 	if err1 != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -89,7 +174,7 @@ func (n *Node) handleDataWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var data DataBody
+	var data WriteBody
 	err2 := json.Unmarshal(raw, &data)
 	if err2 != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -125,19 +210,20 @@ func (n *Node) handleData(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Methods for handling Raft protocol interactions
+// Server methods for handling Raft state
 
-type VoteBody struct {
-	Term int `json:"term"`
-}
-
-type VoteResponse struct {
-	Term int `json:"term"`
+func (n *Node) resetElectionTimer() {
+	n.electionTimer.Stop()
+	n.electionTimer = time.NewTimer(n.electionTimeout)
+	go func() {
+		<-n.electionTimer.C
+		n.doElection()
+	}()
 }
 
 func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
-	idx := strings.LastIndex(r.RemoteAddr, ":")
-	addr := r.RemoteAddr[:idx]
+	addr := r.RemoteAddr
+
 	n.otherNodes[addr] = true
 	fmt.Println("Added ", addr, " to known nodes")
 	fmt.Println("Nodes: ", n.otherNodes)
@@ -179,10 +265,6 @@ func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type AppendResponse struct {
-	Status string `json:"status"`
-}
-
 func (n *Node) handleAppend(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[logs] ", r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
@@ -214,10 +296,6 @@ func (n *Node) handleStop(w http.ResponseWriter, r *http.Request) {
 
 // Other stuff
 
-type HealthResponse struct {
-	Status string `json:"status"`
-}
-
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[health] ", r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
@@ -229,10 +307,8 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 func main() {
 	port := "8080"
 
-	node := NewNode()
+	node := NewNode(port)
 	fmt.Println("Election timeout: ", node.electionTimeout.String())
-
-	// t1.Stop()
 
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/vote", node.handleVote)
