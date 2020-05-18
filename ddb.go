@@ -8,14 +8,12 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-
-	// "strings"
 	"time"
 )
 
 type LogRecord struct {
-	Value     string
-	Timestamp int
+	Index int    `json:"index"`
+	Value string `json:"value"`
 }
 
 type Role int
@@ -31,10 +29,14 @@ type Node struct {
 	NodeId          string
 	electionTimeout time.Duration
 	electionTimer   *time.Timer
+	appendTimeout   time.Duration
+	appendTicker    *time.Ticker
 	State           Role
+	haltAppend      chan bool
 	Term            int
 	votedFor        string
 	otherNodes      map[string]bool
+	log             []LogRecord
 }
 
 // Data types for [un]marshalling JSON
@@ -65,10 +67,16 @@ type VoteResponse struct {
 }
 
 type AppendBody struct {
+	Term         int         `json:"term"`
+	LeaderId     string      `json:"leaderId"`
+	PrevLogIndex int         `json:"prevLogIndex"`
+	PrevLogTerm  int         `json:"prevLogTerm"`
+	Entries      []LogRecord `json:"entries"`
 }
 
 type AppendResponse struct {
-	Status string `json:"status"`
+	Term    int  `json:"term"`
+	Success bool `json:"success"`
 }
 
 // /health is a GET endpoint, so no Body type
@@ -77,6 +85,22 @@ type HealthResponse struct {
 }
 
 // Client methods for managing raft state
+
+func (n *Node) startAppendTicker() {
+	go func() {
+		for {
+			select {
+			case <-n.haltAppend:
+				fmt.Println("No longer leader. Halting log append...")
+				return
+			case <-n.appendTicker.C:
+				// placeholder for generating append requests
+				fmt.Print(".")
+				continue
+			}
+		}
+	}()
+}
 
 func (n Node) requestVote(host string, term int) (bool, error) {
 	uri := "http://" + host + "/vote"
@@ -127,7 +151,9 @@ func (n *Node) doElection() {
 			numVotes, " out of ", majority,
 			"]")
 		n.State = LEADER
+
 		n.electionTimer.Stop()
+		n.startAppendTicker()
 	} else {
 		fmt.Println(
 			"Election failed [",
@@ -141,19 +167,26 @@ func NewNode(port string) *Node {
 	lowerBound := 150
 	upperBound := 300
 	ms := (rand.Int() % lowerBound) + (upperBound - lowerBound)
-	timeout := time.Duration(ms) * time.Millisecond
+	electionTimeout := time.Duration(ms) * time.Millisecond
+
+	appendTimeout := time.Duration(10) * time.Millisecond
 
 	n := Node{
 		Value:           "",
 		NodeId:          port,
-		electionTimeout: timeout,
-		electionTimer:   time.NewTimer(timeout),
+		electionTimeout: electionTimeout,
+		electionTimer:   time.NewTimer(electionTimeout),
+		appendTimeout:   appendTimeout,
+		appendTicker:    time.NewTicker(appendTimeout),
 		State:           FOLLOWER,
+		haltAppend:      make(chan bool),
 		Term:            0,
 		votedFor:        "",
-		otherNodes:      make(map[string]bool)}
+		otherNodes:      make(map[string]bool),
+		log:             make([]LogRecord, 0, 0)}
 
 	go func() {
+		fmt.Println("First election timer")
 		<-n.electionTimer.C
 		n.doElection()
 	}()
@@ -213,6 +246,7 @@ func (n *Node) handleData(w http.ResponseWriter, r *http.Request) {
 // Server methods for handling Raft state
 
 func (n *Node) resetElectionTimer() {
+	fmt.Println("Restarting election timer")
 	n.electionTimer.Stop()
 	n.electionTimer = time.NewTimer(n.electionTimeout)
 	go func() {
@@ -268,7 +302,7 @@ func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
 func (n *Node) handleAppend(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[logs] ", r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
-	res := AppendResponse{Status: "Ok"}
+	res := AppendResponse{Term: n.Term, Success: true}
 	b, _ := json.Marshal(res)
 	fmt.Fprintln(w, string(b))
 }
@@ -310,8 +344,10 @@ func main() {
 	node := NewNode(port)
 	fmt.Println("Election timeout: ", node.electionTimeout.String())
 
+	// Todo: use https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/vote", node.handleVote)
+	http.HandleFunc("/append", node.handleAppend)
 	http.HandleFunc("/stop", node.handleStop)
 	http.HandleFunc("/", node.handleData)
 

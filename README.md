@@ -6,11 +6,17 @@ This is an attempt to create a clustered K-V store application that implements [
 
 Currently, the server is a single node that stores a single value.
 
-To build and run the server:
+To build and run the server on Linux/Unix:
 
 ```
 go build
 ./go-raft
+```
+
+On Windows:
+```
+go build
+./go-raft.exe
 ```
 
 All requests respond with `application/json`. All error bodies contain the "error" key with a readable message.
