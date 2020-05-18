@@ -1,18 +1,18 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"time"
-	"io/ioutil"
-	"strings"
-	"math/rand"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"math/rand"
 	"net/http"
+	"strings"
+	"time"
 )
 
 type LogRecord struct {
-	Value string
+	Value     string
 	Timestamp int
 }
 
@@ -25,12 +25,12 @@ const (
 )
 
 type Node struct {
-	Value string
+	Value           string
 	electionTimeout time.Duration
-	electionTimer *time.Timer
-	State Role
-	Term int
-	otherNodes map[string]bool
+	electionTimer   *time.Timer
+	State           Role
+	Term            int
+	otherNodes      map[string]bool
 }
 
 func (n *Node) doElection() bool {
@@ -38,19 +38,19 @@ func (n *Node) doElection() bool {
 	n.Term = n.Term + 1
 	fmt.Println("\tNew Term: ", n.Term)
 	fmt.Println("\tN other nodes: ", len(n.otherNodes))
-	fmt.Println("\tVotes needed: ", )
+	fmt.Println("\tVotes needed: ")
 	return true
 }
 
 func NewNode() *Node {
-	timeout := time.Duration((rand.Int() % 150) + 150) * time.Millisecond
+	timeout := time.Duration((rand.Int()%150)+150) * time.Millisecond
 	n := Node{
-		Value: "",
+		Value:           "",
 		electionTimeout: timeout,
-		electionTimer: time.NewTimer(timeout),
-		State: FOLLOWER,
-		Term: 0,
-		otherNodes: make(map[string]bool)}
+		electionTimer:   time.NewTimer(timeout),
+		State:           FOLLOWER,
+		Term:            0,
+		otherNodes:      make(map[string]bool)}
 	go func() {
 		<-n.electionTimer.C
 		n.doElection()
@@ -59,17 +59,17 @@ func NewNode() *Node {
 }
 
 type ErrorResponse struct {
-	Error string  `json:"error"`
+	Error string `json:"error"`
 }
 
 // Methods for handling data read/write
 
 type DataBody struct {
-	Value string  `json:"value"`
+	Value string `json:"value"`
 }
 
 type WriteResponse struct {
-	Value string  `json:"value"`
+	Value string `json:"value"`
 }
 
 func (n *Node) handleDataWrite(w http.ResponseWriter, r *http.Request) {
@@ -121,11 +121,11 @@ func (n *Node) handleData(w http.ResponseWriter, r *http.Request) {
 // Methods for handling Raft protocol interactions
 
 type VoteBody struct {
-	Term int  `json:"term"`
+	Term int `json:"term"`
 }
 
 type VoteResponse struct {
-	Term int  `json:"term"`
+	Term int `json:"term"`
 }
 
 func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +154,7 @@ func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Println("\tProposed term: ", body.Term)
-	
+
 	if body.Term <= n.Term {
 		// Use 409 Conflict to represent invalid term
 		n.Term = n.Term + 1
@@ -173,7 +173,7 @@ func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 type AppendResponse struct {
-	Status string  `json:"status"`
+	Status string `json:"status"`
 }
 
 func (n *Node) handleAppendLogsRequest(w http.ResponseWriter, r *http.Request) {
@@ -197,7 +197,7 @@ func (n *Node) handleVote(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func(n *Node) handleStop(w http.ResponseWriter, r *http.Request) {
+func (n *Node) handleStop(w http.ResponseWriter, r *http.Request) {
 	// this is a debug fn--rip out this and the endpoint
 	n.electionTimer.Stop()
 	fmt.Fprintln(w, "Ok")
@@ -206,7 +206,7 @@ func(n *Node) handleStop(w http.ResponseWriter, r *http.Request) {
 // Other stuff
 
 type HealthResponse struct {
-	Status string  `json:"status"`
+	Status string `json:"status"`
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
