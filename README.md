@@ -34,3 +34,28 @@ To read the current value:
 ```
 curl localhost:8080/
 ```
+
+## Todo
+
+Raft
+
+- ~~basic vote handler~~
+- ~~basic vote client~~
+- ~~basic append handler~~
+- basic append client
+- leader index volatile state
+- make persistent state persistent
+- add log comparison check to vote handler
+- add more checking on most recently seen term
+- add commit/applied logic
+- check logic on receiving append request when leader
+- switch data write to append to leader log
+
+
+General application
+
+- swap in [gin-gonic/gin](https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview) for http router and request/response objects
+- write unit and/or integration tests (will be easier to do with gin than with using net/http directly)
+- separate logic out into smaller functions/modules/packages
+- add configuration options (cli? config file?)
+- add scripts for starting a cluster / changing membership

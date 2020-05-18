@@ -419,7 +419,6 @@ func main() {
 	node := NewNode(port)
 	fmt.Println("Election timeout: ", node.electionTimeout.String())
 
-	// Todo: use https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/vote", node.handleVote)
 	http.HandleFunc("/append", node.handleAppend)
