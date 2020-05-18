@@ -12,7 +12,7 @@ import (
 )
 
 type LogRecord struct {
-	Index int    `json:"index"`
+	Term  int    `json:"term"`
 	Value string `json:"value"`
 }
 
@@ -36,6 +36,10 @@ type Node struct {
 	Term            int
 	votedFor        string
 	otherNodes      map[string]bool
+	nextIndex       map[string]int
+	matchIndex      map[string]int
+	commitIndex     int
+	lastApplied     int
 	log             []LogRecord
 }
 
@@ -72,6 +76,7 @@ type AppendBody struct {
 	PrevLogIndex int         `json:"prevLogIndex"`
 	PrevLogTerm  int         `json:"prevLogTerm"`
 	Entries      []LogRecord `json:"entries"`
+	LeaderCommit int         `json:"leaderCommit"`
 }
 
 type AppendResponse struct {
@@ -183,6 +188,10 @@ func NewNode(port string) *Node {
 		Term:            0,
 		votedFor:        "",
 		otherNodes:      make(map[string]bool),
+		nextIndex:       make(map[string]int),
+		matchIndex:      make(map[string]int),
+		commitIndex:     0,
+		lastApplied:     0,
 		log:             make([]LogRecord, 0, 0)}
 
 	go func() {
@@ -302,7 +311,77 @@ func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
 func (n *Node) handleAppend(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[logs] ", r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
-	res := AppendResponse{Term: n.Term, Success: true}
+
+	raw, err1 := ioutil.ReadAll(r.Body)
+	if err1 != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		error := ErrorResponse{Error: "Body required"}
+		b, _ := json.Marshal(error)
+		fmt.Fprintln(w, string(b))
+		return
+	}
+
+	var body AppendBody
+	err2 := json.Unmarshal(raw, &body)
+	if err2 != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		error := ErrorResponse{Error: "Invalid JSON body"}
+		b, _ := json.Marshal(error)
+		fmt.Fprintln(w, string(b))
+		return
+	}
+
+	var success bool
+	success = true
+	// reply false if req term < current term
+	if body.Term < n.Term {
+		success = false
+	}
+	// if none of the failure conditions fired...
+	if success {
+		// reply false if log does not contain entry at req idx matching req term
+		if body.PrevLogIndex > len(n.log) {
+			success = false
+		} else {
+			lastLog := n.log[body.PrevLogIndex]
+			if lastLog.Term != body.PrevLogTerm {
+				success = false
+			}
+		}
+		// if an existing entry conflicts with a new one (same idx diff term),
+		// delete the existing entry and any that follow
+		mismatchIdx := -1
+		if body.PrevLogIndex < len(n.log) {
+			overlappingEntries := n.log[body.PrevLogIndex:]
+			for i, rec := range overlappingEntries {
+				if rec.Term != body.Entries[i].Term {
+					mismatchIdx = body.PrevLogIndex + i
+					break
+				}
+			}
+		}
+		if mismatchIdx >= 0 {
+			n.log = n.log[:mismatchIdx]
+		}
+		// append any entries not already in log
+		offset := len(n.log) - body.PrevLogIndex
+		n.log = append(n.log, body.Entries[offset:]...)
+		// update commit idx
+		if body.LeaderCommit > n.commitIndex {
+			if body.LeaderCommit < len(n.log) {
+				n.commitIndex = body.LeaderCommit
+			} else {
+				n.commitIndex = len(n.log)
+			}
+		}
+
+		if n.State == CANDIDATE {
+			n.State = FOLLOWER
+			n.resetElectionTimer()
+		}
+	}
+	// finally
+	res := AppendResponse{Term: n.Term, Success: success}
 	b, _ := json.Marshal(res)
 	fmt.Fprintln(w, string(b))
 }
