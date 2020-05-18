@@ -63,7 +63,7 @@ type DataBody struct {
 	Value string
 }
 
-func (n *Node) handleWrite(w http.ResponseWriter, r *http.Request) {
+func (n *Node) handleDataWrite(w http.ResponseWriter, r *http.Request) {
 	d := json.NewDecoder(r.Body)
 	data := new(DataBody)
 	d.Decode(&data)
@@ -72,16 +72,16 @@ func (n *Node) handleWrite(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Ok")
 }
 
-func (n Node) handleRead(w http.ResponseWriter, r *http.Request) {
+func (n Node) handleDataRead(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s", n.Value)
 }
 
-func (n *Node) dataHandler(w http.ResponseWriter, r *http.Request) {
+func (n *Node) handleData(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[data] ", r.Method, r.URL.Path)
-	if r.Method == "POST" {
-		n.handleWrite(w, r)
-	} else if r.Method == "GET" {
-		n.handleRead(w, r)
+	if r.Method == http.MethodPost {
+		n.handleDataWrite(w, r)
+	} else if r.Method == http.MethodGet {
+		n.handleDataRead(w, r)
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintln(w, "Unsupported verb", r.Method)
@@ -89,19 +89,47 @@ func (n *Node) dataHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Methods for handling Raft protocol interactions
-func (n *Node) handleElectionRequest(w http.ResponseWriter, r *http.Request) {
+
+type VoteBody struct {
+	Term int
+}
+
+func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
 	idx := strings.LastIndex(r.RemoteAddr, ":")
 	addr := r.RemoteAddr[:idx]
 	n.otherNodes[addr] = true
 	fmt.Println("Added ", addr, " to known nodes")
 	fmt.Println("Nodes: ", n.otherNodes)
+
+	d := json.NewDecoder(r.Body)
+	body := new(VoteBody)
+	d.Decode(&body)
+	fmt.Println("\tTerm: ", *body)
+
+	w.Header().Set("Content-Type", "application/json")
+	
+	if body.Term <= n.Term {
+		// Use 409 Conflict to represent invalid term
+		n.Term = n.Term + 1
+		fmt.Println("Expired term vote received. New term: ", n.Term)
+		w.WriteHeader(http.StatusConflict)
+		fmt.Fprintln(w, "Conflict: invalid term")
+	} else {
+		fmt.Println("Voting for ", addr, " for term ", body.Term)
+		n.Term = body.Term
+		fmt.Fprintln(w, "Accepted")
+	}
+}
+
+func (n *Node) handleAppendLogsRequest(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Ok")
 }
 
-func (n *Node) raftHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("[raft] ", r.Method, r.URL.Path)
-		if r.Method == "POST" {
-		n.handleElectionRequest(w, r)
+func (n *Node) handleVote(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("[vote] ", r.Method, r.URL.Path)
+	 if r.Method == http.MethodPost {
+		// This is a request for Vote
+		n.handleVoteRequest(w, r)
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintln(w, "Unsupported verb", r.Method)
@@ -130,8 +158,8 @@ func main() {
 
 	fmt.Println(fmt.Sprintf("Server listening on port %s", port))
 	http.HandleFunc("/health", handleHealth)
-	http.HandleFunc("/raft", node.raftHandler)
+	http.HandleFunc("/vote", node.handleVote)
 	http.HandleFunc("/stop", node.handleStop)
-	http.HandleFunc("/", node.dataHandler)
+	http.HandleFunc("/", node.handleData)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }

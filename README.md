@@ -1,6 +1,6 @@
 # Raft practice implementation in Go
 
-This is an attempt to create a clustered K-V store application that implements Raft for consistency, in Go, based on the explanation of Raft from [The Secret Lives of Data](http://thesecretlivesofdata.com/raft/). If/when I get it working for the simplest case (leader accepts GET and POST requests to a specified path to read and write data respectively), then I'll think about other features, such as something other than K-V, a dashboard, etc.
+This is an attempt to create a clustered K-V store application that implements [Raft](https://raft.github.io/) for consistency, in Go, based on the explanation of Raft from [The Secret Lives of Data](http://thesecretlivesofdata.com/raft/). If/when I get it working for the simplest case (leader accepts GET and POST requests to a specified path to read and write data respectively), then I'll think about other features, such as something other than K-V, a dashboard, etc.
 
 ## Build and run
 
