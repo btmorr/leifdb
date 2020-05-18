@@ -36,9 +36,11 @@ type Node struct {
 func (n *Node) doElection() bool {
 	fmt.Println("Starting Election")
 	n.Term = n.Term + 1
+	numNodes := len(n.otherNodes)
+	majority := (numNodes/2)+1
 	fmt.Println("\tNew Term: ", n.Term)
 	fmt.Println("\tN other nodes: ", len(n.otherNodes))
-	fmt.Println("\tVotes needed: ", (len(n.otherNodes)/2)+1)
+	fmt.Println("\tVotes needed: ", majority)
 	return true
 }
 
