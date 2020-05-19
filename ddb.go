@@ -1,3 +1,6 @@
+// Practice implementation of the Raft distributed-consensus algorithm
+// See: https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf
+
 package main
 
 import (
@@ -11,11 +14,13 @@ import (
 	"time"
 )
 
+// A LogRecord is a Raft log object, shipped to other servers to propagate writes
 type LogRecord struct {
 	Term  int    `json:"term"`
 	Value string `json:"value"`
 }
 
+// A Role is one of Leader, Candidate, or Follower
 type Role int
 
 const (
@@ -24,6 +29,9 @@ const (
 	LEADER
 )
 
+// A Node is one member of a Raft cluster, with all state needed to operate the
+// algorithm's state machine. At any one time, its role may be Leader, Candidate,
+// or Follower, and have different responsibilities depending on its role
 type Node struct {
 	Value           string
 	NodeId          string
@@ -45,19 +53,22 @@ type Node struct {
 
 // Data types for [un]marshalling JSON
 
-// Common error type for all endpoints
+// An ErrorResponse is a common error type for all server endpoints
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// A WriteBody is a request body template for write route
 type WriteBody struct {
 	Value string `json:"value"`
 }
 
+// A WriteResponse is a response body template for the write route
 type WriteResponse struct {
 	Value string `json:"value"`
 }
 
+// A VoteBody is a request body template for the request-vote route
 type VoteBody struct {
 	Term         int    `json:"term"`
 	CandidateId  string `json:"candidateId"`
@@ -65,11 +76,13 @@ type VoteBody struct {
 	LastLogTerm  int    `json:"lastLogTerm"`
 }
 
+// A VoteResponse is a response body template for the request-vote route
 type VoteResponse struct {
 	Term        int  `json:"term"`
 	VoteGranted bool `json:"voteGranted"`
 }
 
+// An AppendBody is a request body template for the log-append route
 type AppendBody struct {
 	Term         int         `json:"term"`
 	LeaderId     string      `json:"leaderId"`
@@ -79,18 +92,23 @@ type AppendBody struct {
 	LeaderCommit int         `json:"leaderCommit"`
 }
 
+// An AppendResponse is a response body template for the log-append route
 type AppendResponse struct {
 	Term    int  `json:"term"`
 	Success bool `json:"success"`
 }
 
-// /health is a GET endpoint, so no Body type
+// A HealthResponse is a response body template for the health route [note: the
+//health endpoint takes a GET request, so there is no corresponding Body type]
 type HealthResponse struct {
 	Status string `json:"status"`
 }
 
 // Client methods for managing raft state
 
+// When a Raft node's role is "leader", startAppendTicker periodically send out
+// an append-logs request to each other node on a period shorter than any node's
+// election timeout
 func (n *Node) startAppendTicker() {
 	go func() {
 		for {
@@ -107,6 +125,7 @@ func (n *Node) startAppendTicker() {
 	}()
 }
 
+// requestVote sends a request for vote to a single other node (see `doElection`)
 func (n Node) requestVote(host string, term int) (bool, error) {
 	uri := "http://" + host + "/vote"
 	body := VoteBody{
@@ -131,6 +150,14 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 	return vote.VoteGranted, err2
 }
 
+// doElection sends out requests for votes to each other node in the Raft cluster.
+// When a Raft node's role is "candidate", it should send start an election. If it
+// is granted votes from a majority of nodes, its role changes to "leader". If it
+// receives an append-logs message during the election from a node with a term higher
+// than this node's current term, its role changes to "follower". If it does not
+// receive a majority of votes and also does not receive an append-logs from a valid
+// leader, it increments the term and starts another election (repeat until a leader
+// is elected).
 func (n *Node) doElection() {
 	fmt.Println("Starting Election")
 	n.State = CANDIDATE
@@ -144,7 +171,7 @@ func (n *Node) doElection() {
 
 	n.resetElectionTimer()
 	numVotes := 1
-	for k, _ := range n.otherNodes {
+	for k := range n.otherNodes {
 		vote, _ := n.requestVote(k, n.Term)
 		if vote {
 			numVotes = numVotes + 1
@@ -168,6 +195,8 @@ func (n *Node) doElection() {
 	}
 }
 
+// NewNode initializes a Node with a randomized election timeout between
+// 150-300ms, and starts the election timer
 func NewNode(port string) *Node {
 	lowerBound := 150
 	upperBound := 300
@@ -205,6 +234,7 @@ func NewNode(port string) *Node {
 
 // Server methods for handling data read/write
 
+// Handler for POSTs to the data endpoint (client write)
 func (n *Node) handleDataWrite(w http.ResponseWriter, r *http.Request) {
 	// revise to log-append / commit protocol once elections work
 	raw, err1 := ioutil.ReadAll(r.Body)
@@ -233,10 +263,12 @@ func (n *Node) handleDataWrite(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, string(b))
 }
 
+// Handler for GETs to the data endpoint (client read)
 func (n Node) handleDataRead(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s", n.Value)
 }
 
+// Dispatcher for requests to the data endpoint (client requests)
 func (n *Node) handleData(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[data] ", r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
@@ -254,6 +286,8 @@ func (n *Node) handleData(w http.ResponseWriter, r *http.Request) {
 
 // Server methods for handling Raft state
 
+// When a Raft node is a follower or candidate and receives a message from a
+// valid leader, it should reset its election countdown timer
 func (n *Node) resetElectionTimer() {
 	fmt.Println("Restarting election timer")
 	n.electionTimer.Stop()
@@ -264,6 +298,7 @@ func (n *Node) resetElectionTimer() {
 	}()
 }
 
+// Handler for vote requests from candidate nodes
 func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
 	addr := r.RemoteAddr
 
@@ -310,6 +345,7 @@ func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Handler for append-log messages from leader nodes
 func (n *Node) handleAppend(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[logs] ", r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
@@ -388,6 +424,7 @@ func (n *Node) handleAppend(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, string(b))
 }
 
+// Dispatcher for vote requests
 func (n *Node) handleVote(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[vote] ", r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
@@ -404,6 +441,8 @@ func (n *Node) handleVote(w http.ResponseWriter, r *http.Request) {
 
 // Other stuff
 
+// Handler for the health endpoint--not required for Raft, but useful for infrastructure
+// monitoring, such as determining when a node is available in blue-green deploy
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[health] ", r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
