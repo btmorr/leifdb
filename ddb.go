@@ -8,10 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 // A LogRecord is a Raft log object, shipped to other servers to propagate writes
@@ -52,11 +53,6 @@ type Node struct {
 }
 
 // Data types for [un]marshalling JSON
-
-// An ErrorResponse is a common error type for all server endpoints
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
 
 // A WriteBody is a request body template for write route
 type WriteBody struct {
@@ -118,7 +114,7 @@ func (n *Node) startAppendTicker() {
 				return
 			case <-n.appendTicker.C:
 				// placeholder for generating append requests
-				// fmt.Print(".")
+				fmt.Print(".")
 				continue
 			}
 		}
@@ -128,6 +124,8 @@ func (n *Node) startAppendTicker() {
 // requestVote sends a request for vote to a single other node (see `doElection`)
 func (n Node) requestVote(host string, term int) (bool, error) {
 	uri := "http://" + host + "/vote"
+	fmt.Println("Requesting vote from ", host)
+
 	body := VoteBody{
 		Term:         term,
 		CandidateId:  n.NodeId,
@@ -161,6 +159,7 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 func (n *Node) doElection() {
 	fmt.Println("Starting Election")
 	n.State = CANDIDATE
+	fmt.Println("Becoming candidate")
 	n.Term = n.Term + 1
 	numNodes := len(n.otherNodes)
 	majority := (numNodes / 2) + 1
@@ -172,8 +171,9 @@ func (n *Node) doElection() {
 	n.resetElectionTimer()
 	numVotes := 1
 	for k := range n.otherNodes {
-		vote, _ := n.requestVote(k, n.Term)
-		if vote {
+		_, err := n.requestVote(k, n.Term)
+		fmt.Println("got a vote")
+		if err == nil {
 			numVotes = numVotes + 1
 		}
 	}
@@ -181,17 +181,20 @@ func (n *Node) doElection() {
 		fmt.Println(
 			"Election succeeded [",
 			numVotes, " out of ", majority,
-			"]")
+			" needed]")
 		n.State = LEADER
+		fmt.Println("Becoming leader")
 
 		n.electionTimer.Stop()
+		fmt.Println("Stopping election timer, starting append ticker")
 		n.startAppendTicker()
 	} else {
 		fmt.Println(
 			"Election failed [",
 			numVotes, " out of ", majority,
-			"]")
+			" needed]")
 		n.State = FOLLOWER
+		fmt.Println("Becoming follower")
 	}
 }
 
@@ -235,142 +238,84 @@ func NewNode(port string) *Node {
 // Server methods for handling data read/write
 
 // Handler for POSTs to the data endpoint (client write)
-func (n *Node) handleDataWrite(w http.ResponseWriter, r *http.Request) {
-	// revise to log-append / commit protocol once elections work
-	raw, err1 := ioutil.ReadAll(r.Body)
-	if err1 != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		error := ErrorResponse{Error: "Body required"}
-		b, _ := json.Marshal(error)
-		fmt.Fprintln(w, string(b))
-		return
-	}
-
+func (n *Node) handleDataWrite(c *gin.Context) {
+	// todo: revise to log-append / commit protocol once elections work
 	var data WriteBody
-	err2 := json.Unmarshal(raw, &data)
-	if err2 != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		error := ErrorResponse{Error: "Invalid JSON body"}
-		b, _ := json.Marshal(error)
-		fmt.Fprintln(w, string(b))
+	if err := c.ShouldBindJSON(&data); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	fmt.Println("New value: ", data.Value)
 	n.Value = data.Value
-	res := WriteResponse{Value: n.Value}
-	b, _ := json.Marshal(res)
-	fmt.Fprintln(w, string(b))
+
+	c.JSON(http.StatusOK, gin.H{"value": n.Value})
 }
 
 // Handler for GETs to the data endpoint (client read)
-func (n Node) handleDataRead(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "%s", n.Value)
+func (n *Node) handleDataRead(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"value": n.Value})
 }
-
-// Dispatcher for requests to the data endpoint (client requests)
-func (n *Node) handleData(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("[data] ", r.Method, r.URL.Path)
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method == http.MethodPost {
-		n.handleDataWrite(w, r)
-	} else if r.Method == http.MethodGet {
-		n.handleDataRead(w, r)
-	} else {
-		w.WriteHeader(http.StatusBadRequest)
-
-		fmt.Fprintln(w, "Unsupported verb", r.Method)
-	}
-}
-
-// Server methods for handling Raft state
 
 // When a Raft node is a follower or candidate and receives a message from a
 // valid leader, it should reset its election countdown timer
 func (n *Node) resetElectionTimer() {
 	fmt.Println("Restarting election timer")
-	n.electionTimer.Stop()
-	n.electionTimer = time.NewTimer(n.electionTimeout)
-	go func() {
-		<-n.electionTimer.C
-		n.doElection()
-	}()
+	n.electionTimer.Reset(n.electionTimeout)
 }
 
-// Handler for vote requests from candidate nodes
-func (n *Node) handleVoteRequest(w http.ResponseWriter, r *http.Request) {
-	addr := r.RemoteAddr
-
+// addNodeToKnown updates the list of known other members of the raft cluster
+func (n *Node) addNodeToKnown(addr string) {
 	n.otherNodes[addr] = true
 	fmt.Println("Added ", addr, " to known nodes")
 	fmt.Println("Nodes: ", n.otherNodes)
+}
 
-	raw, err1 := ioutil.ReadAll(r.Body)
-	if err1 != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		error := ErrorResponse{Error: "Body required"}
-		b, _ := json.Marshal(error)
-		fmt.Fprintln(w, string(b))
-		return
-	}
-
+// Handler for vote requests from candidate nodes
+func (n *Node) handleVote(c *gin.Context) {
 	var body VoteBody
-	err2 := json.Unmarshal(raw, &body)
-	if err2 != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		error := ErrorResponse{Error: "Invalid JSON body"}
-		b, _ := json.Marshal(error)
-		fmt.Fprintln(w, string(b))
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	fmt.Println("\tProposed term: ", body.Term)
 
+	n.addNodeToKnown(body.CandidateId)
+
+	fmt.Println(body.CandidateId, " proposed term: ", body.Term)
+	var status int
+	var vote gin.H
 	if body.Term <= n.Term {
 		// Use 409 Conflict to represent invalid term
 		n.Term = n.Term + 1
 		fmt.Println("Expired term vote received. New term: ", n.Term)
-		w.WriteHeader(http.StatusConflict)
-		vote := VoteResponse{Term: n.Term, VoteGranted: false}
-		b, _ := json.Marshal(vote)
-		fmt.Fprintln(w, string(b))
+		status = http.StatusConflict
+		vote = gin.H{"term": n.Term, "voteGranted": false}
 	} else {
-		fmt.Println("Voting for ", addr, " for term ", body.Term)
+		fmt.Println("Voting for ", body.CandidateId, " for term ", body.Term)
 		n.Term = body.Term
-		n.votedFor = addr
+		n.votedFor = body.CandidateId
+		if n.State == LEADER {
+			n.haltAppend<-true
+		}
+		n.State = FOLLOWER
+		n.resetElectionTimer()
+
 		// todo: check candidate's log details
-		vote := VoteResponse{Term: n.Term, VoteGranted: true}
-		b, _ := json.Marshal(vote)
-		fmt.Fprintln(w, string(b))
-	}
+		status = http.StatusOK
+		vote = gin.H{"term": n.Term, "voteGranted": true}
+	}	
+	c.JSON(status, vote)
 }
 
 // Handler for append-log messages from leader nodes
-func (n *Node) handleAppend(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("[logs] ", r.Method, r.URL.Path)
-	w.Header().Set("Content-Type", "application/json")
-
-	raw, err1 := ioutil.ReadAll(r.Body)
-	if err1 != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		error := ErrorResponse{Error: "Body required"}
-		b, _ := json.Marshal(error)
-		fmt.Fprintln(w, string(b))
-		return
-	}
-
+func (n *Node) handleAppend(c *gin.Context) {
 	var body AppendBody
-	err2 := json.Unmarshal(raw, &body)
-	if err2 != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		error := ErrorResponse{Error: "Invalid JSON body"}
-		b, _ := json.Marshal(error)
-		fmt.Fprintln(w, string(b))
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	var success bool
-	success = true
+	success := true
 	// reply false if req term < current term
 	if body.Term < n.Term {
 		success = false
@@ -413,42 +358,22 @@ func (n *Node) handleAppend(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// if a valid append is received during an election, cancel election
 		if n.State == CANDIDATE {
 			n.State = FOLLOWER
-			n.resetElectionTimer()
 		}
+
+		// only reset the election timer on append from a valid leader
+		n.resetElectionTimer()
 	}
 	// finally
-	res := AppendResponse{Term: n.Term, Success: success}
-	b, _ := json.Marshal(res)
-	fmt.Fprintln(w, string(b))
+	c.JSON(http.StatusOK, gin.H{"term": n.Term, "success": success})
 }
-
-// Dispatcher for vote requests
-func (n *Node) handleVote(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("[vote] ", r.Method, r.URL.Path)
-	w.Header().Set("Content-Type", "application/json")
-	if r.Method == http.MethodPost {
-		// This is a request for Vote
-		n.handleVoteRequest(w, r)
-	} else {
-		w.WriteHeader(http.StatusBadRequest)
-		error := ErrorResponse{Error: "Unsupported HTTP verb " + r.Method}
-		b, _ := json.Marshal(error)
-		fmt.Fprintln(w, string(b))
-	}
-}
-
-// Other stuff
 
 // Handler for the health endpoint--not required for Raft, but useful for infrastructure
 // monitoring, such as determining when a node is available in blue-green deploy
-func handleHealth(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("[health] ", r.Method, r.URL.Path)
-	w.Header().Set("Content-Type", "application/json")
-	res := HealthResponse{Status: "Ok"}
-	b, _ := json.Marshal(res)
-	fmt.Fprintln(w, string(b))
+func handleHealth(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "Ok"})
 }
 
 func main() {
@@ -458,11 +383,13 @@ func main() {
 	node := NewNode(port)
 	fmt.Println("Election timeout: ", node.electionTimeout.String())
 
-	http.HandleFunc("/health", handleHealth)
-	http.HandleFunc("/vote", node.handleVote)
-	http.HandleFunc("/append", node.handleAppend)
-	http.HandleFunc("/", node.handleData)
+	router := gin.Default()
 
-	fmt.Println("Server listening on port " + port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
+	router.GET("/health", handleHealth)
+	router.POST("/vote", node.handleVote)
+	router.POST("/append", node.handleAppend)
+	router.GET("/", node.handleDataRead)
+	router.POST("/", node.handleDataWrite)
+
+	router.Run()
 }
