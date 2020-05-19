@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	// "log"
 	"math/rand"
 	"net/http"
 	"time"
@@ -115,7 +114,7 @@ func (n *Node) startAppendTicker() {
 				return
 			case <-n.appendTicker.C:
 				// placeholder for generating append requests
-				// fmt.Print(".")
+				fmt.Print(".")
 				continue
 			}
 		}
@@ -125,6 +124,8 @@ func (n *Node) startAppendTicker() {
 // requestVote sends a request for vote to a single other node (see `doElection`)
 func (n Node) requestVote(host string, term int) (bool, error) {
 	uri := "http://" + host + "/vote"
+	fmt.Println("Requesting vote from ", host)
+
 	body := VoteBody{
 		Term:         term,
 		CandidateId:  n.NodeId,
@@ -158,6 +159,7 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 func (n *Node) doElection() {
 	fmt.Println("Starting Election")
 	n.State = CANDIDATE
+	fmt.Println("Becoming candidate")
 	n.Term = n.Term + 1
 	numNodes := len(n.otherNodes)
 	majority := (numNodes / 2) + 1
@@ -169,8 +171,9 @@ func (n *Node) doElection() {
 	n.resetElectionTimer()
 	numVotes := 1
 	for k := range n.otherNodes {
-		vote, _ := n.requestVote(k, n.Term)
-		if vote {
+		_, err := n.requestVote(k, n.Term)
+		fmt.Println("got a vote")
+		if err == nil {
 			numVotes = numVotes + 1
 		}
 	}
@@ -178,17 +181,20 @@ func (n *Node) doElection() {
 		fmt.Println(
 			"Election succeeded [",
 			numVotes, " out of ", majority,
-			"]")
+			" needed]")
 		n.State = LEADER
+		fmt.Println("Becoming leader")
 
 		n.electionTimer.Stop()
+		fmt.Println("Stopping election timer, starting append ticker")
 		n.startAppendTicker()
 	} else {
 		fmt.Println(
 			"Election failed [",
 			numVotes, " out of ", majority,
-			"]")
+			" needed]")
 		n.State = FOLLOWER
+		fmt.Println("Becoming follower")
 	}
 }
 
@@ -247,7 +253,7 @@ func (n *Node) handleDataWrite(c *gin.Context) {
 }
 
 // Handler for GETs to the data endpoint (client read)
-func (n Node) handleDataRead(c *gin.Context) {
+func (n *Node) handleDataRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"value": n.Value})
 }
 
@@ -255,12 +261,14 @@ func (n Node) handleDataRead(c *gin.Context) {
 // valid leader, it should reset its election countdown timer
 func (n *Node) resetElectionTimer() {
 	fmt.Println("Restarting election timer")
-	n.electionTimer.Stop()
-	n.electionTimer = time.NewTimer(n.electionTimeout)
-	go func() {
-		<-n.electionTimer.C
-		n.doElection()
-	}()
+	n.electionTimer.Reset(n.electionTimeout)
+}
+
+// addNodeToKnown updates the list of known other members of the raft cluster
+func (n *Node) addNodeToKnown(addr string) {
+	n.otherNodes[addr] = true
+	fmt.Println("Added ", addr, " to known nodes")
+	fmt.Println("Nodes: ", n.otherNodes)
 }
 
 // Handler for vote requests from candidate nodes
@@ -271,13 +279,9 @@ func (n *Node) handleVote(c *gin.Context) {
 		return
 	}
 
-	addr := body.LeaderId
-	n.otherNodes[addr] = true
-	fmt.Println("Added ", addr, " to known nodes")
-	fmt.Println("Nodes: ", n.otherNodes)
+	n.addNodeToKnown(body.CandidateId)
 
-	fmt.Println("\tProposed term: ", body.Term)
-
+	fmt.Println(body.CandidateId, " proposed term: ", body.Term)
 	var status int
 	var vote gin.H
 	if body.Term <= n.Term {
@@ -287,9 +291,15 @@ func (n *Node) handleVote(c *gin.Context) {
 		status = http.StatusConflict
 		vote = gin.H{"term": n.Term, "voteGranted": false}
 	} else {
-		fmt.Println("Voting for ", addr, " for term ", body.Term)
+		fmt.Println("Voting for ", body.CandidateId, " for term ", body.Term)
 		n.Term = body.Term
-		n.votedFor = addr
+		n.votedFor = body.CandidateId
+		if n.State == LEADER {
+			n.haltAppend<-true
+		}
+		n.State = FOLLOWER
+		n.resetElectionTimer()
+
 		// todo: check candidate's log details
 		status = http.StatusOK
 		vote = gin.H{"term": n.Term, "voteGranted": true}
