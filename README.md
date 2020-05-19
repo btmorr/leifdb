@@ -1,5 +1,7 @@
 # Raft practice implementation in Go
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/btmorr/go-raft)](https://goreportcard.com/report/github.com/btmorr/go-raft)[![License](https://img.shields.io/github/license/btmorr/go-raft.svg)](https://github.com/btmorr/go-raft/LICENSE)
+
 This is an attempt to create a clustered K-V store application that implements [Raft](https://raft.github.io/) for consistency, in Go, based on the explanation of Raft from [The Secret Lives of Data](http://thesecretlivesofdata.com/raft/) and the [short paper](https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf). If/when I get it working for the simplest case (leader accepts GET and POST requests to a specified path to read and write data respectively), then I'll think about other features, such as full OpenAPI support, something other than K-V, a dashboard, etc.
 
 ## Build and run
