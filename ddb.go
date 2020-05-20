@@ -111,6 +111,7 @@ func (n *Node) startAppendTicker() {
 			select {
 			case <-n.haltAppend:
 				fmt.Println("No longer leader. Halting log append...")
+				n.resetElectionTimer()
 				return
 			case <-n.appendTicker.C:
 				// placeholder for generating append requests
@@ -132,20 +133,29 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 		LastLogIndex: 0,
 		LastLogTerm:  0}
 
-	b, _ := json.Marshal(body)
+	b, err0 := json.Marshal(body)
+	if err0 != nil {
+		return false, err0
+	}
 	br := bytes.NewReader(b)
 
-	resp, _ := http.Post(uri, "application/json", br)
-
-	raw, err1 := ioutil.ReadAll(resp.Body)
+	resp, err1 := http.Post(uri, "application/json", br)
 	if err1 != nil {
 		return false, err1
 	}
 
-	var vote VoteResponse
-	err2 := json.Unmarshal(raw, &vote)
+	raw, err2 := ioutil.ReadAll(resp.Body)
+	if err2 != nil {
+		return false, err2
+	}
 
-	return vote.VoteGranted, err2
+	var vote VoteResponse
+	err3 := json.Unmarshal(raw, &vote)
+	if err3 != nil {
+		return false, err3		
+	}
+
+	return vote.VoteGranted, err3
 }
 
 // doElection sends out requests for votes to each other node in the Raft cluster.
@@ -174,25 +184,30 @@ func (n *Node) doElection() {
 		_, err := n.requestVote(k, n.Term)
 		fmt.Println("got a vote")
 		if err == nil {
+			fmt.Println("it's a 'yay'")
 			numVotes = numVotes + 1
 		}
 	}
 	if numVotes >= majority {
 		fmt.Println(
 			"Election succeeded [",
-			numVotes, " out of ", majority,
-			" needed]")
+			numVotes, "out of", majority,
+			"needed]")
 		n.State = LEADER
 		fmt.Println("Becoming leader")
 
 		n.electionTimer.Stop()
+		select {
+		  case <-n.electionTimer.C:
+		  default:
+		}
 		fmt.Println("Stopping election timer, starting append ticker")
 		n.startAppendTicker()
 	} else {
 		fmt.Println(
 			"Election failed [",
-			numVotes, " out of ", majority,
-			" needed]")
+			numVotes, "out of", majority,
+			"needed]")
 		n.State = FOLLOWER
 		fmt.Println("Becoming follower")
 	}
@@ -261,7 +276,19 @@ func (n *Node) handleDataRead(c *gin.Context) {
 // valid leader, it should reset its election countdown timer
 func (n *Node) resetElectionTimer() {
 	fmt.Println("Restarting election timer")
+	// todo: do I need to stop the timer and drain the channel before resetting?
+	if !n.electionTimer.Stop() {
+		select {
+			case <- n.electionTimer.C:
+			default:
+		}
+	}
 	n.electionTimer.Reset(n.electionTimeout)
+	// Uncommenting this go function causes a segfault
+	go func() {
+		<-n.electionTimer.C
+		n.doElection()
+	}()
 }
 
 // addNodeToKnown updates the list of known other members of the raft cluster
