@@ -71,6 +71,7 @@ Raft
 - ~~basic vote handler~~
 - ~~basic vote client~~
 - ~~basic append handler~~
+- ~~handle vote response correctly in election~~
 - basic append client
 - leader index volatile state
 - make persistent state persistent
