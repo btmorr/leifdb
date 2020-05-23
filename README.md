@@ -24,6 +24,12 @@ go build
 
 All requests respond with `application/json`. All error bodies contain the "error" key with a readable message.
 
+To run the test suite:
+
+```
+go test
+```
+
 ## Endpoints
 
 ### Database requests
@@ -71,6 +77,7 @@ Raft
 - ~~basic vote handler~~
 - ~~basic vote client~~
 - ~~basic append handler~~
+- ~~handle vote response correctly in election~~
 - basic append client
 - leader index volatile state
 - make persistent state persistent

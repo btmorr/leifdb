@@ -102,6 +102,14 @@ type HealthResponse struct {
 
 // Client methods for managing raft state
 
+// SetState designates the Node as one of the roles in the Role enumeration,
+// and handles any side-effects that should happen specifically on state
+// transition
+func (n *Node) SetState(newState Role) {
+	n.State = newState
+	// todo: move starting/stopping election timer and append ticker here
+}
+
 // When a Raft node's role is "leader", startAppendTicker periodically send out
 // an append-logs request to each other node on a period shorter than any node's
 // election timeout
@@ -111,6 +119,7 @@ func (n *Node) startAppendTicker() {
 			select {
 			case <-n.haltAppend:
 				fmt.Println("No longer leader. Halting log append...")
+				n.resetElectionTimer()
 				return
 			case <-n.appendTicker.C:
 				// placeholder for generating append requests
@@ -132,20 +141,29 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 		LastLogIndex: 0,
 		LastLogTerm:  0}
 
-	b, _ := json.Marshal(body)
+	b, err0 := json.Marshal(body)
+	if err0 != nil {
+		return false, err0
+	}
 	br := bytes.NewReader(b)
 
-	resp, _ := http.Post(uri, "application/json", br)
-
-	raw, err1 := ioutil.ReadAll(resp.Body)
+	resp, err1 := http.Post(uri, "application/json", br)
 	if err1 != nil {
 		return false, err1
 	}
 
-	var vote VoteResponse
-	err2 := json.Unmarshal(raw, &vote)
+	raw, err2 := ioutil.ReadAll(resp.Body)
+	if err2 != nil {
+		return false, err2
+	}
 
-	return vote.VoteGranted, err2
+	var vote VoteResponse
+	err3 := json.Unmarshal(raw, &vote)
+	if err3 != nil {
+		return false, err3		
+	}
+
+	return vote.VoteGranted, err3
 }
 
 // doElection sends out requests for votes to each other node in the Raft cluster.
@@ -158,7 +176,7 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 // is elected).
 func (n *Node) doElection() {
 	fmt.Println("Starting Election")
-	n.State = CANDIDATE
+	n.SetState(CANDIDATE)
 	fmt.Println("Becoming candidate")
 	n.Term = n.Term + 1
 	numNodes := len(n.otherNodes)
@@ -174,26 +192,31 @@ func (n *Node) doElection() {
 		_, err := n.requestVote(k, n.Term)
 		fmt.Println("got a vote")
 		if err == nil {
+			fmt.Println("it's a 'yay'")
 			numVotes = numVotes + 1
 		}
 	}
 	if numVotes >= majority {
 		fmt.Println(
 			"Election succeeded [",
-			numVotes, " out of ", majority,
-			" needed]")
-		n.State = LEADER
+			numVotes, "out of", majority,
+			"needed]")
+		n.SetState(LEADER)
 		fmt.Println("Becoming leader")
 
 		n.electionTimer.Stop()
+		select {
+		  case <-n.electionTimer.C:
+		  default:
+		}
 		fmt.Println("Stopping election timer, starting append ticker")
 		n.startAppendTicker()
 	} else {
 		fmt.Println(
 			"Election failed [",
-			numVotes, " out of ", majority,
-			" needed]")
-		n.State = FOLLOWER
+			numVotes, "out of", majority,
+			"needed]")
+		n.SetState(FOLLOWER)
 		fmt.Println("Becoming follower")
 	}
 }
@@ -261,7 +284,19 @@ func (n *Node) handleDataRead(c *gin.Context) {
 // valid leader, it should reset its election countdown timer
 func (n *Node) resetElectionTimer() {
 	fmt.Println("Restarting election timer")
+	// todo: do I need to stop the timer and drain the channel before resetting?
+	if !n.electionTimer.Stop() {
+		select {
+			case <- n.electionTimer.C:
+			default:
+		}
+	}
 	n.electionTimer.Reset(n.electionTimeout)
+	// Uncommenting this go function causes a segfault
+	go func() {
+		<-n.electionTimer.C
+		n.doElection()
+	}()
 }
 
 // addNodeToKnown updates the list of known other members of the raft cluster
@@ -297,13 +332,16 @@ func (n *Node) handleVote(c *gin.Context) {
 		if n.State == LEADER {
 			n.haltAppend<-true
 		}
-		n.State = FOLLOWER
+		n.SetState(FOLLOWER)
 		n.resetElectionTimer()
 
 		// todo: check candidate's log details
 		status = http.StatusOK
 		vote = gin.H{"term": n.Term, "voteGranted": true}
+		fmt.Println("Returning vote: ", vote)
 	}	
+	fmt.Println("Returning vote: [", status, " ]", vote)
+
 	c.JSON(status, vote)
 }
 
@@ -360,7 +398,7 @@ func (n *Node) handleAppend(c *gin.Context) {
 
 		// if a valid append is received during an election, cancel election
 		if n.State == CANDIDATE {
-			n.State = FOLLOWER
+			n.SetState(FOLLOWER)
 		}
 
 		// only reset the election timer on append from a valid leader
@@ -376,13 +414,7 @@ func handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "Ok"})
 }
 
-func main() {
-	rand.Seed(time.Now().UnixNano())
-	port := "8080"
-
-	node := NewNode(port)
-	fmt.Println("Election timeout: ", node.electionTimeout.String())
-
+func buildRouter(node *Node) *gin.Engine {
 	router := gin.Default()
 
 	router.GET("/health", handleHealth)
@@ -391,5 +423,16 @@ func main() {
 	router.GET("/", node.handleDataRead)
 	router.POST("/", node.handleDataWrite)
 
+	return router
+}
+
+func main() {
+	rand.Seed(time.Now().UnixNano())
+	port := "8080"
+
+	node := NewNode(port)
+	fmt.Println("Election timeout: ", node.electionTimeout.String())
+
+	router := buildRouter(node)
 	router.Run()
 }
