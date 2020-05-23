@@ -12,11 +12,11 @@ import (
 	"testing"
 )
 
-func CreateTestDir() string {
+func CreateTestDir() (string, error) {
 	tmpDir := os.TempDir()
-	dataDir := filepath.Join(tmpDir, ".go-raft")
-	EnsureDirectory(dataDir)
-	return dataDir
+	dataDir := filepath.Join(tmpDir, ".tmp-go-raft")
+	err := EnsureDirectory(dataDir)
+	return dataDir, err
 }
 
 func RemoveTestDir(path string) error {
@@ -26,10 +26,11 @@ func RemoveTestDir(path string) error {
 func TestHealthRoute(t *testing.T) {
 	addr := "localhost:8080"
 
-	testDir := CreateTestDir()
+	testDir, _ := CreateTestDir()
 	defer RemoveTestDir(testDir)
 
-	node, _ := NewNode(testDir, addr)
+	config := NewNodeConfig(testDir, addr)
+	node, _ := NewNode(config)
 	router := buildRouter(node)
 
 	w := httptest.NewRecorder()
@@ -45,10 +46,11 @@ func TestVoteOldTerm(t *testing.T) {
 	addr := "localhost:8080"
 
 	// Node should come up and become the leader of a single-node cluster
-	testDir := CreateTestDir()
+	testDir, _ := CreateTestDir()
 	defer RemoveTestDir(testDir)
 
-	node, _ := NewNode(testDir, addr)
+	config := NewNodeConfig(testDir, addr)
+	node, _ := NewNode(config)
 	router := buildRouter(node)
 
 	// --- Part 1 ---
@@ -123,4 +125,45 @@ func TestVoteOldTerm(t *testing.T) {
 	//
 	// Mock out Node.SetState to record transitions.
 
+}
+
+func TestPersistence(t *testing.T) {
+	addr := "localhost:8080"
+
+	testDir, _ := CreateTestDir()
+	defer RemoveTestDir(testDir)
+
+	config := NewNodeConfig(testDir, addr)
+
+	testTerm := "5 localhost:8181\n"
+	DumpToFile(config.TermFile, testTerm)
+	
+	testLog := "1 test\n2 other\n"
+	DumpToFile(config.LogFile, testLog)
+
+	termData, e1 := ReadFromFile(config.TermFile)
+    if e1 != nil {
+    	t.Error(e1)
+    }
+    if termData != testTerm {
+    	t.Error("Term data file roundtrip failed")
+    }
+
+	logData, e2 := ReadFromFile(config.LogFile)
+    if e2 != nil {
+    	t.Error(e2)
+    }
+    if logData != testLog {
+    	t.Error("Term data file roundtrip failed")
+    }
+
+	node, _ := NewNode(config)
+
+	if node.Term != 5 {
+		t.Error("Term not loaded correctly. Found term: ", node.Term)
+	}
+
+	if len(node.log) != 2 {
+		t.Error("Incorrect number of logs loaded. Number found: ", len(node.log))
+	}
 }
