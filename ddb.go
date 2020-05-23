@@ -6,10 +6,18 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"hash/fnv"
 	"io/ioutil"
+	"log"
 	"math/rand"
+	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -29,6 +37,13 @@ const (
 	CANDIDATE
 	LEADER
 )
+
+type NodeConfig struct {
+	Id       string
+	DataDir  string
+	TermFile string
+	LogFile  string
+}
 
 // A Node is one member of a Raft cluster, with all state needed to operate the
 // algorithm's state machine. At any one time, its role may be Leader, Candidate,
@@ -50,6 +65,7 @@ type Node struct {
 	commitIndex     int
 	lastApplied     int
 	log             []LogRecord
+	config          NodeConfig
 }
 
 // Data types for [un]marshalling JSON
@@ -102,6 +118,52 @@ type HealthResponse struct {
 
 // Client methods for managing raft state
 
+// Non-volatile state functions
+// `Term`, `votedFor`, and `log` must persist through application restart, so
+// any request that changes these values must be written to disk before
+// responding to the request.
+
+	
+func check(e error) {
+    if e != nil {
+        panic(e)
+    }
+}
+
+// Writes payload to file (overwrites file if it exists)
+func DumpToFile(filename string, payload string) error {
+	p := []byte(payload)
+	return ioutil.WriteFile(filename, p, 0644)
+}
+
+// Reads payload from file
+func ReadFromFile(filename string) (string, error) {
+	data, err := ioutil.ReadFile(filename)
+	return string(data), err
+}
+
+// Record term and vote in non-volatile state
+func (n *Node) SetTerm(newTerm int, votedFor string) {
+	n.Term = newTerm
+	n.votedFor = votedFor
+	vote := fmt.Sprintf("%d, %s\n", newTerm, votedFor)
+	DumpToFile(n.config.TermFile, vote)
+}
+
+// Record log in non-volatile state
+func (n *Node) SetLog(newLog []LogRecord) {
+	n.log = newLog
+	logString := ""
+	for _, l := range newLog {
+		logString = logString + fmt.Sprintf("%d, %s\n", l.Term, l.Value)
+	}
+	DumpToFile(n.config.LogFile, logString)
+}
+
+// Volatile state functions
+// Other state should not be written to disk, and should be re-initialized on
+// restart, but may have other side-effects that happen on state change
+
 // SetState designates the Node as one of the roles in the Role enumeration,
 // and handles any side-effects that should happen specifically on state
 // transition
@@ -118,12 +180,12 @@ func (n *Node) startAppendTicker() {
 		for {
 			select {
 			case <-n.haltAppend:
-				fmt.Println("No longer leader. Halting log append...")
+				log.Println("No longer leader. Halting log append...")
 				n.resetElectionTimer()
 				return
 			case <-n.appendTicker.C:
 				// placeholder for generating append requests
-				fmt.Print(".")
+				log.Print(".")
 				continue
 			}
 		}
@@ -133,7 +195,7 @@ func (n *Node) startAppendTicker() {
 // requestVote sends a request for vote to a single other node (see `doElection`)
 func (n Node) requestVote(host string, term int) (bool, error) {
 	uri := "http://" + host + "/vote"
-	fmt.Println("Requesting vote from ", host)
+	log.Println("Requesting vote from ", host)
 
 	body := VoteBody{
 		Term:         term,
@@ -160,7 +222,7 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 	var vote VoteResponse
 	err3 := json.Unmarshal(raw, &vote)
 	if err3 != nil {
-		return false, err3		
+		return false, err3
 	}
 
 	return vote.VoteGranted, err3
@@ -175,55 +237,66 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 // leader, it increments the term and starts another election (repeat until a leader
 // is elected).
 func (n *Node) doElection() {
-	fmt.Println("Starting Election")
+	log.Println("Starting Election")
 	n.SetState(CANDIDATE)
-	fmt.Println("Becoming candidate")
+	log.Println("Becoming candidate")
 	n.Term = n.Term + 1
 	numNodes := len(n.otherNodes)
 	majority := (numNodes / 2) + 1
 
-	fmt.Println("\tNew Term: ", n.Term)
-	fmt.Println("\tN other nodes: ", len(n.otherNodes))
-	fmt.Println("\tVotes needed: ", majority)
+	log.Println("\tNew Term: ", n.Term)
+	log.Println("\tN other nodes: ", len(n.otherNodes))
+	log.Println("\tVotes needed: ", majority)
 
 	n.resetElectionTimer()
 	numVotes := 1
 	for k := range n.otherNodes {
 		_, err := n.requestVote(k, n.Term)
-		fmt.Println("got a vote")
+		log.Println("got a vote")
 		if err == nil {
-			fmt.Println("it's a 'yay'")
+			log.Println("it's a 'yay'")
 			numVotes = numVotes + 1
 		}
 	}
 	if numVotes >= majority {
-		fmt.Println(
+		log.Println(
 			"Election succeeded [",
 			numVotes, "out of", majority,
 			"needed]")
 		n.SetState(LEADER)
-		fmt.Println("Becoming leader")
+		log.Println("Becoming leader")
 
 		n.electionTimer.Stop()
 		select {
-		  case <-n.electionTimer.C:
-		  default:
+		case <-n.electionTimer.C:
+		default:
 		}
-		fmt.Println("Stopping election timer, starting append ticker")
+		log.Println("Stopping election timer, starting append ticker")
 		n.startAppendTicker()
 	} else {
-		fmt.Println(
+		log.Println(
 			"Election failed [",
 			numVotes, "out of", majority,
 			"needed]")
 		n.SetState(FOLLOWER)
-		fmt.Println("Becoming follower")
+		log.Println("Becoming follower")
 	}
+}
+
+// NewNodeConfig creates a config for a Node
+func NewNodeConfig(dataDir string, addr string) NodeConfig {
+	// todo: check dataDir. if it is empty, initialize Node with default
+	// values for non-volatile state. Otherwise, read values.
+	return NodeConfig{
+		Id:       addr,
+		DataDir:  dataDir,
+		TermFile: filepath.Join(dataDir, "term"),
+		LogFile:  filepath.Join(dataDir, "raftlog")}
 }
 
 // NewNode initializes a Node with a randomized election timeout between
 // 150-300ms, and starts the election timer
-func NewNode(port string) *Node {
+func NewNode(config NodeConfig) (*Node, error) {
 	lowerBound := 150
 	upperBound := 300
 	ms := (rand.Int() % lowerBound) + (upperBound - lowerBound)
@@ -231,31 +304,61 @@ func NewNode(port string) *Node {
 
 	appendTimeout := time.Duration(10) * time.Millisecond
 
+	var term int
+	var votedFor string
+	_, err := os.Stat(config.TermFile)
+	if err != nil {
+		term = 0
+		votedFor = ""
+	} else {
+		raw, _ := ReadFromFile(config.TermFile)
+		dat := strings.Split(raw, " ")
+		term, _ = strconv.Atoi(dat[0])
+		votedFor = dat[1]
+	}
+
+	var logs []LogRecord
+	_, err2 := os.Stat(config.LogFile)
+	if err2 != nil {
+		logs = make([]LogRecord, 0, 0)
+	} else {
+		raw, _ := ReadFromFile(config.LogFile)
+		rows := strings.Split(raw, "\n")
+		for _, row := range rows {
+			dat := strings.Split(row, " ")
+			if len(dat) == 2 {
+				logTerm, _ := strconv.Atoi(dat[0])
+				logs = append(logs, LogRecord{Term: logTerm, Value: dat[1]})
+			}
+		}
+	}
+
 	n := Node{
 		Value:           "",
-		NodeId:          port,
+		NodeId:          config.Id,
 		electionTimeout: electionTimeout,
 		electionTimer:   time.NewTimer(electionTimeout),
 		appendTimeout:   appendTimeout,
 		appendTicker:    time.NewTicker(appendTimeout),
 		State:           FOLLOWER,
 		haltAppend:      make(chan bool),
-		Term:            0,
-		votedFor:        "",
+		Term:            term,
+		votedFor:        votedFor,
 		otherNodes:      make(map[string]bool),
 		nextIndex:       make(map[string]int),
 		matchIndex:      make(map[string]int),
 		commitIndex:     0,
 		lastApplied:     0,
-		log:             make([]LogRecord, 0, 0)}
+		log:             logs,
+		config:          config}
 
 	go func() {
-		fmt.Println("First election timer")
+		log.Println("First election timer")
 		<-n.electionTimer.C
 		n.doElection()
 	}()
 
-	return &n
+	return &n, nil
 }
 
 // Server methods for handling data read/write
@@ -269,7 +372,7 @@ func (n *Node) handleDataWrite(c *gin.Context) {
 		return
 	}
 
-	fmt.Println("New value: ", data.Value)
+	log.Println("New value: ", data.Value)
 	n.Value = data.Value
 
 	c.JSON(http.StatusOK, gin.H{"value": n.Value})
@@ -283,16 +386,16 @@ func (n *Node) handleDataRead(c *gin.Context) {
 // When a Raft node is a follower or candidate and receives a message from a
 // valid leader, it should reset its election countdown timer
 func (n *Node) resetElectionTimer() {
-	fmt.Println("Restarting election timer")
-	// todo: do I need to stop the timer and drain the channel before resetting?
+	log.Println("Restarting election timer")
+
 	if !n.electionTimer.Stop() {
 		select {
-			case <- n.electionTimer.C:
-			default:
+		case <-n.electionTimer.C:
+		default:
 		}
 	}
 	n.electionTimer.Reset(n.electionTimeout)
-	// Uncommenting this go function causes a segfault
+
 	go func() {
 		<-n.electionTimer.C
 		n.doElection()
@@ -302,8 +405,8 @@ func (n *Node) resetElectionTimer() {
 // addNodeToKnown updates the list of known other members of the raft cluster
 func (n *Node) addNodeToKnown(addr string) {
 	n.otherNodes[addr] = true
-	fmt.Println("Added ", addr, " to known nodes")
-	fmt.Println("Nodes: ", n.otherNodes)
+	log.Println("Added ", addr, " to known nodes")
+	log.Println("Nodes: ", n.otherNodes)
 }
 
 // Handler for vote requests from candidate nodes
@@ -316,21 +419,21 @@ func (n *Node) handleVote(c *gin.Context) {
 
 	n.addNodeToKnown(body.CandidateId)
 
-	fmt.Println(body.CandidateId, " proposed term: ", body.Term)
+	log.Println(body.CandidateId, " proposed term: ", body.Term)
 	var status int
 	var vote gin.H
 	if body.Term <= n.Term {
 		// Use 409 Conflict to represent invalid term
 		n.Term = n.Term + 1
-		fmt.Println("Expired term vote received. New term: ", n.Term)
+		log.Println("Expired term vote received. New term: ", n.Term)
 		status = http.StatusConflict
 		vote = gin.H{"term": n.Term, "voteGranted": false}
 	} else {
-		fmt.Println("Voting for ", body.CandidateId, " for term ", body.Term)
+		log.Println("Voting for ", body.CandidateId, " for term ", body.Term)
 		n.Term = body.Term
 		n.votedFor = body.CandidateId
 		if n.State == LEADER {
-			n.haltAppend<-true
+			n.haltAppend <- true
 		}
 		n.SetState(FOLLOWER)
 		n.resetElectionTimer()
@@ -338,9 +441,9 @@ func (n *Node) handleVote(c *gin.Context) {
 		// todo: check candidate's log details
 		status = http.StatusOK
 		vote = gin.H{"term": n.Term, "voteGranted": true}
-		fmt.Println("Returning vote: ", vote)
-	}	
-	fmt.Println("Returning vote: [", status, " ]", vote)
+		log.Println("Returning vote: ", vote)
+	}
+	log.Println("Returning vote: [", status, " ]", vote)
 
 	c.JSON(status, vote)
 }
@@ -426,12 +529,69 @@ func buildRouter(node *Node) *gin.Engine {
 	return router
 }
 
+// Get preferred outbound ip of this machine
+func GetOutboundIP() net.IP {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	return localAddr.IP
+}
+
+// Create the directory if it does not exist (fail if path exists and is
+// not a directory)
+func EnsureDirectory(path string) error {
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		var fileMode os.FileMode
+		fileMode = os.ModeDir | 0775
+		mdErr := os.MkdirAll(path, fileMode)
+		return mdErr
+	}
+	if err != nil {
+		return err
+	}
+	file, _ := os.Stat(path)
+	if !file.IsDir() {
+		return errors.New(path + " is not a directory")
+	}
+	return nil
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	port := "8080"
 
-	node := NewNode(port)
-	fmt.Println("Election timeout: ", node.electionTimeout.String())
+	// todo: determine port programatically
+	port := "8080"
+	addr := fmt.Sprintf("%s:%s", GetOutboundIP(), port)
+	log.Println("Address: " + addr)
+
+	hash := fnv.New32()
+	hash.Write([]byte(addr))
+	hashString := fmt.Sprintf("%x", hash.Sum(nil))
+
+	// todo: make this configurable
+	homeDir, _ := os.UserHomeDir()
+	dataDir := filepath.Join(homeDir, ".go-raft", hashString)
+	log.Println("Data dir: ", dataDir)
+	err := EnsureDirectory(dataDir)
+	if err != nil {
+		panic(err)
+	}
+
+	config := NewNodeConfig(dataDir, addr)
+	log.Println("Persistent data in " + config.DataDir)
+
+	node, err := NewNode(config)
+	if err != nil {
+		log.Println("Failed to initialize node")
+		panic(err)
+	}
+	log.Println("Election timeout: ", node.electionTimeout.String())
 
 	router := buildRouter(node)
 	router.Run()
