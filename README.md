@@ -2,6 +2,7 @@
 
 [![Go Report Card][report-card-badge]][report-card]
 [![License][license-badge]][license]
+[![Build Status][build-badge]][build]
 
 This is an attempt to create a clustered K-V store application that implements [Raft] for consistency, in Go, based on the explanation of Raft from [The Secret Lives of Data] and the [short Raft paper]. If/when I get it working for the simplest case (leader accepts GET and POST requests to a specified path to read and write data respectively), then I'll think about other features, such as full OpenAPI support, something other than K-V, a dashboard, etc.
 
@@ -107,3 +108,5 @@ General application
 [report-card-badge]: https://goreportcard.com/badge/github.com/btmorr/go-raft
 [license]: https://github.com/btmorr/go-raft/LICENSE
 [license-badge]: https://img.shields.io/github/license/btmorr/go-raft.svg
+[build]: https://travis-ci.com/btmorr/go-raft
+[build-badge]: https://travis-ci.com/btmorr/go-raft.svg?branch=master
