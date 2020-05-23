@@ -7,13 +7,29 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
-func TestHealthRoute(t *testing.T) {
-	port := "8080"
+func CreateTestDir() string {
+	tmpDir := os.TempDir()
+	dataDir := filepath.Join(tmpDir, ".go-raft")
+	EnsureDirectory(dataDir)
+	return dataDir
+}
 
-	node := NewNode(port)
+func RemoveTestDir(path string) error {
+	return os.RemoveAll(path)
+}
+
+func TestHealthRoute(t *testing.T) {
+	addr := "localhost:8080"
+
+	testDir := CreateTestDir()
+	defer RemoveTestDir(testDir)
+
+	node, _ := NewNode(testDir, addr)
 	router := buildRouter(node)
 
 	w := httptest.NewRecorder()
@@ -26,10 +42,13 @@ func TestHealthRoute(t *testing.T) {
 }
 
 func TestVoteOldTerm(t *testing.T) {
-	port := "8080"
+	addr := "localhost:8080"
 
 	// Node should come up and become the leader of a single-node cluster
-	node := NewNode(port)
+	testDir := CreateTestDir()
+	defer RemoveTestDir(testDir)
+
+	node, _ := NewNode(testDir, addr)
 	router := buildRouter(node)
 
 	// --- Part 1 ---

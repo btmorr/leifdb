@@ -6,10 +6,16 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"hash/fnv"
 	"io/ioutil"
+	"log"
 	"math/rand"
+	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -50,6 +56,7 @@ type Node struct {
 	commitIndex     int
 	lastApplied     int
 	log             []LogRecord
+	dataDir         string
 }
 
 // Data types for [un]marshalling JSON
@@ -101,6 +108,16 @@ type HealthResponse struct {
 }
 
 // Client methods for managing raft state
+
+// Non-volatile state functions
+// `Term`, `votedFor`, and `log` must persist through application restart, so
+// any request that changes these values must be written to disk before
+// responding to the request.
+
+func (n *Node) SetTerm(newTerm int) {
+	n.Term = newTerm
+
+}
 
 // SetState designates the Node as one of the roles in the Role enumeration,
 // and handles any side-effects that should happen specifically on state
@@ -223,13 +240,16 @@ func (n *Node) doElection() {
 
 // NewNode initializes a Node with a randomized election timeout between
 // 150-300ms, and starts the election timer
-func NewNode(port string) *Node {
+func NewNode(dataDir string, port string) (*Node, error) {
 	lowerBound := 150
 	upperBound := 300
 	ms := (rand.Int() % lowerBound) + (upperBound - lowerBound)
 	electionTimeout := time.Duration(ms) * time.Millisecond
 
 	appendTimeout := time.Duration(10) * time.Millisecond
+
+	// todo: check dataDir. if it is empty, initialize Node with default 
+	// values for non-volatile state. Otherwise, read values.
 
 	n := Node{
 		Value:           "",
@@ -247,7 +267,8 @@ func NewNode(port string) *Node {
 		matchIndex:      make(map[string]int),
 		commitIndex:     0,
 		lastApplied:     0,
-		log:             make([]LogRecord, 0, 0)}
+		log:             make([]LogRecord, 0, 0),
+		dataDir:         dataDir}
 
 	go func() {
 		fmt.Println("First election timer")
@@ -255,7 +276,7 @@ func NewNode(port string) *Node {
 		n.doElection()
 	}()
 
-	return &n
+	return &n, nil
 }
 
 // Server methods for handling data read/write
@@ -284,7 +305,7 @@ func (n *Node) handleDataRead(c *gin.Context) {
 // valid leader, it should reset its election countdown timer
 func (n *Node) resetElectionTimer() {
 	fmt.Println("Restarting election timer")
-	// todo: do I need to stop the timer and drain the channel before resetting?
+
 	if !n.electionTimer.Stop() {
 		select {
 			case <- n.electionTimer.C:
@@ -292,7 +313,7 @@ func (n *Node) resetElectionTimer() {
 		}
 	}
 	n.electionTimer.Reset(n.electionTimeout)
-	// Uncommenting this go function causes a segfault
+
 	go func() {
 		<-n.electionTimer.C
 		n.doElection()
@@ -426,11 +447,65 @@ func buildRouter(node *Node) *gin.Engine {
 	return router
 }
 
+// Get preferred outbound ip of this machine
+func GetOutboundIP() net.IP {
+    conn, err := net.Dial("udp", "8.8.8.8:80")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer conn.Close()
+
+    localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+    return localAddr.IP
+}
+
+// Create the directory if it does not exist (fail if path exists and is
+// not a directory)
+func EnsureDirectory(path string) error {
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		var fileMode os.FileMode
+		fileMode = os.ModeDir | 0664
+		mdErr := os.MkdirAll(path, fileMode)
+		return mdErr
+	}
+	if err != nil {
+		return err
+	}
+	file, _ := os.Stat(path)
+	if !file.IsDir() {
+		return errors.New(path + " is not a directory")
+	}
+	return nil
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	port := "8080"
 
-	node := NewNode(port)
+	// todo: determine port programatically
+	port := "8080"
+	addr := fmt.Sprintf("%s:%s", GetOutboundIP(), port)
+	fmt.Println("Address: " + addr)
+
+	hash := fnv.New32()
+	hash.Write([]byte(addr))
+	hashString := fmt.Sprintf("%x", hash.Sum(nil))
+
+	// todo: make this configurable
+	homeDir, _ := os.UserHomeDir()
+	dataDir := filepath.Join(homeDir, ".go-raft", hashString)
+	fmt.Println("Data dir: ", dataDir)
+	err := EnsureDirectory(dataDir)
+	if err != nil {
+		panic(err)
+	}
+
+	node, err := NewNode(dataDir, addr)
+	if err != nil {
+		fmt.Println("Failed to initialize node")
+		panic(err)
+	}
 	fmt.Println("Election timeout: ", node.electionTimeout.String())
 
 	router := buildRouter(node)
