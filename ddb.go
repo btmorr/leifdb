@@ -102,6 +102,14 @@ type HealthResponse struct {
 
 // Client methods for managing raft state
 
+// SetState designates the Node as one of the roles in the Role enumeration,
+// and handles any side-effects that should happen specifically on state
+// transition
+func (n *Node) SetState(newState Role) {
+	n.State = newState
+	// todo: move starting/stopping election timer and append ticker here
+}
+
 // When a Raft node's role is "leader", startAppendTicker periodically send out
 // an append-logs request to each other node on a period shorter than any node's
 // election timeout
@@ -168,7 +176,7 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 // is elected).
 func (n *Node) doElection() {
 	fmt.Println("Starting Election")
-	n.State = CANDIDATE
+	n.SetState(CANDIDATE)
 	fmt.Println("Becoming candidate")
 	n.Term = n.Term + 1
 	numNodes := len(n.otherNodes)
@@ -193,7 +201,7 @@ func (n *Node) doElection() {
 			"Election succeeded [",
 			numVotes, "out of", majority,
 			"needed]")
-		n.State = LEADER
+		n.SetState(LEADER)
 		fmt.Println("Becoming leader")
 
 		n.electionTimer.Stop()
@@ -208,7 +216,7 @@ func (n *Node) doElection() {
 			"Election failed [",
 			numVotes, "out of", majority,
 			"needed]")
-		n.State = FOLLOWER
+		n.SetState(FOLLOWER)
 		fmt.Println("Becoming follower")
 	}
 }
@@ -324,13 +332,16 @@ func (n *Node) handleVote(c *gin.Context) {
 		if n.State == LEADER {
 			n.haltAppend<-true
 		}
-		n.State = FOLLOWER
+		n.SetState(FOLLOWER)
 		n.resetElectionTimer()
 
 		// todo: check candidate's log details
 		status = http.StatusOK
 		vote = gin.H{"term": n.Term, "voteGranted": true}
+		fmt.Println("Returning vote: ", vote)
 	}	
+	fmt.Println("Returning vote: [", status, " ]", vote)
+
 	c.JSON(status, vote)
 }
 
@@ -387,7 +398,7 @@ func (n *Node) handleAppend(c *gin.Context) {
 
 		// if a valid append is received during an election, cancel election
 		if n.State == CANDIDATE {
-			n.State = FOLLOWER
+			n.SetState(FOLLOWER)
 		}
 
 		// only reset the election timer on append from a valid leader
@@ -403,13 +414,7 @@ func handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "Ok"})
 }
 
-func main() {
-	rand.Seed(time.Now().UnixNano())
-	port := "8080"
-
-	node := NewNode(port)
-	fmt.Println("Election timeout: ", node.electionTimeout.String())
-
+func buildRouter(node *Node) *gin.Engine {
 	router := gin.Default()
 
 	router.GET("/health", handleHealth)
@@ -418,5 +423,16 @@ func main() {
 	router.GET("/", node.handleDataRead)
 	router.POST("/", node.handleDataWrite)
 
+	return router
+}
+
+func main() {
+	rand.Seed(time.Now().UnixNano())
+	port := "8080"
+
+	node := NewNode(port)
+	fmt.Println("Election timeout: ", node.electionTimeout.String())
+
+	router := buildRouter(node)
 	router.Run()
 }
