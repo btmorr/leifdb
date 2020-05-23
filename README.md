@@ -81,7 +81,7 @@ Raft
 - ~~handle vote response correctly in election~~
 - basic append client
 - leader index volatile state
-- make persistent state persistent
+- ~~make persistent state persistent~~
 - add log comparison check to vote handler
 - add more checking on most recently seen term
 - add commit/applied logic
@@ -93,7 +93,8 @@ Raft
 General application
 
 - ~~swap in [gin-gonic/gin] for http router and request/response objects~~
-- write unit and/or integration tests (will be easier to do with gin than with using net/http directly)
+- ~~write unit and/or integration tests (will be easier to do with gin than with using net/http directly)~~
+- write more tests
 - separate logic out into smaller functions/modules/packages
 - add configuration options (cli? config file?)
 - add scripts for starting a cluster / changing membership

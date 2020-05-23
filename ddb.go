@@ -33,9 +33,9 @@ type LogRecord struct {
 type Role int
 
 const (
-	FOLLOWER Role = iota
-	CANDIDATE
-	LEADER
+	follower Role = iota
+	candidate
+	leader
 )
 
 type NodeConfig struct {
@@ -122,13 +122,6 @@ type HealthResponse struct {
 // `Term`, `votedFor`, and `log` must persist through application restart, so
 // any request that changes these values must be written to disk before
 // responding to the request.
-
-	
-func check(e error) {
-    if e != nil {
-        panic(e)
-    }
-}
 
 // Writes payload to file (overwrites file if it exists)
 func DumpToFile(filename string, payload string) error {
@@ -238,7 +231,7 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 // is elected).
 func (n *Node) doElection() {
 	log.Println("Starting Election")
-	n.SetState(CANDIDATE)
+	n.SetState(candidate)
 	log.Println("Becoming candidate")
 	n.Term = n.Term + 1
 	numNodes := len(n.otherNodes)
@@ -263,7 +256,7 @@ func (n *Node) doElection() {
 			"Election succeeded [",
 			numVotes, "out of", majority,
 			"needed]")
-		n.SetState(LEADER)
+		n.SetState(leader)
 		log.Println("Becoming leader")
 
 		n.electionTimer.Stop()
@@ -278,7 +271,7 @@ func (n *Node) doElection() {
 			"Election failed [",
 			numVotes, "out of", majority,
 			"needed]")
-		n.SetState(FOLLOWER)
+		n.SetState(follower)
 		log.Println("Becoming follower")
 	}
 }
@@ -340,7 +333,7 @@ func NewNode(config NodeConfig) (*Node, error) {
 		electionTimer:   time.NewTimer(electionTimeout),
 		appendTimeout:   appendTimeout,
 		appendTicker:    time.NewTicker(appendTimeout),
-		State:           FOLLOWER,
+		State:           follower,
 		haltAppend:      make(chan bool),
 		Term:            term,
 		votedFor:        votedFor,
@@ -432,10 +425,10 @@ func (n *Node) handleVote(c *gin.Context) {
 		log.Println("Voting for ", body.CandidateId, " for term ", body.Term)
 		n.Term = body.Term
 		n.votedFor = body.CandidateId
-		if n.State == LEADER {
+		if n.State == leader {
 			n.haltAppend <- true
 		}
-		n.SetState(FOLLOWER)
+		n.SetState(follower)
 		n.resetElectionTimer()
 
 		// todo: check candidate's log details
@@ -500,8 +493,8 @@ func (n *Node) handleAppend(c *gin.Context) {
 		}
 
 		// if a valid append is received during an election, cancel election
-		if n.State == CANDIDATE {
-			n.SetState(FOLLOWER)
+		if n.State == candidate {
+			n.SetState(follower)
 		}
 
 		// only reset the election timer on append from a valid leader
