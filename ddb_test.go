@@ -137,25 +137,25 @@ func TestPersistence(t *testing.T) {
 
 	testTerm := "5 localhost:8181\n"
 	DumpToFile(config.TermFile, testTerm)
-	
+
 	testLog := "1 test\n2 other\n"
 	DumpToFile(config.LogFile, testLog)
 
 	termData, e1 := ReadFromFile(config.TermFile)
-    if e1 != nil {
-    	t.Error(e1)
-    }
-    if termData != testTerm {
-    	t.Error("Term data file roundtrip failed")
-    }
+	if e1 != nil {
+		t.Error(e1)
+	}
+	if termData != testTerm {
+		t.Error("Term data file roundtrip failed")
+	}
 
 	logData, e2 := ReadFromFile(config.LogFile)
-    if e2 != nil {
-    	t.Error(e2)
-    }
-    if logData != testLog {
-    	t.Error("Term data file roundtrip failed")
-    }
+	if e2 != nil {
+		t.Error(e2)
+	}
+	if logData != testLog {
+		t.Error("Term data file roundtrip failed")
+	}
 
 	node, _ := NewNode(config)
 
