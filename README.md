@@ -6,6 +6,8 @@
 
 This is an attempt to create a clustered K-V store application that implements [Raft] for consistency, in Go, based on the explanation of Raft from [The Secret Lives of Data] and the [short Raft paper]. If/when I get it working for the simplest case (leader accepts GET and POST requests to a specified path to read and write data respectively), then I'll think about other features, such as full OpenAPI support, something other than K-V, a dashboard, etc.
 
+Contributions are welcome! Check out the [Contributing Guide] for more info on how to make feature requests, subtmit bug reports, or create pull requests.
+
 ## Build and run
 
 Currently, the server is a single node that stores a single value.
@@ -95,6 +97,8 @@ To check the health status of the server:
 curl -i localhost:8080/health
 ```
 
+Currently, the return code of this endpoint is the main indicator of health (200 for healthy, anything else indicates not healthy).
+
 ## Todo
 
 Raft
@@ -128,3 +132,5 @@ General application
 [license-badge]: https://img.shields.io/github/license/btmorr/leifdb.svg
 [build]: https://travis-ci.com/btmorr/leifdb
 [build-badge]: https://travis-ci.com/btmorr/leifdb.svg?branch=master
+
+[Contributing Guide]: [./CONTRIBUTING.md]
