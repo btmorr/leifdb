@@ -10,8 +10,6 @@ Contributions are welcome! Check out the [Contributing Guide] for more info on h
 
 ## Build and run
 
-Currently, the database stores a single value. Once that value is correctly updated via Raft, then the database portion of the app can be made more complex for full K-V storage and other functions (which will require modifying the root endpoint).
-
 The simplest way to build and test the application is to enter:
 
 ```
@@ -60,6 +58,8 @@ Or on Windows:
 ## Endpoints
 
 ### Database requests
+
+(Under construction...endpoints don't all consistently work yet)
 
 To create/update a value:
 
@@ -120,6 +120,7 @@ Raft complete (additional functionality in the [full Raft paper]):
 - modifications
 
 General application:
+- Probably use protobuf for log storage on disk instead of strings (for easier marshalling/unmarshalling, but also to handle missing value fields at all)
 - Add configuration options (cli? config file?)
 - Add scripts for starting a cluster / changing membership
 - OpenAPI compatibility for HTTP API?
