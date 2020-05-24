@@ -10,25 +10,49 @@ This is an attempt to create a clustered K-V store application that implements [
 
 Currently, the server is a single node that stores a single value.
 
-To build and run the server on Linux/Unix:
+The simplest way to build and test the application is to enter:
 
 ```
-go build
-./go-raft
+make
+```
+
+This will clean, build, and test the code. To build and run the app manually on Linux/Unix:
+
+```
+go clean
+go build -o app
 ```
 
 On Windows:
 ```
-go build
-./go-raft.exe
+go clean
+go build -o app.exe
 ```
 
 All requests respond with `application/json`. All error bodies contain the "error" key with a readable message.
 
-To run the test suite:
+To manually run the test suite:
 
 ```
 go test
+```
+
+To run the server, do:
+
+```
+make run
+```
+
+Or, to run manually on Linux/Unix:
+
+```
+./app
+```
+
+Or on Windows:
+
+```
+./app.exe
 ```
 
 ## Endpoints

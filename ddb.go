@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/btmorr/go-raft/internal/fileutils"
+	"github.com/gin-gonic/gin"
 )
 
 // A LogRecord is a Raft log object, shipped to other servers to propagate writes
