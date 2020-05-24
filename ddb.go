@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/btmorr/go-raft/internal/fileutils"
 )
 
 // A LogRecord is a Raft log object, shipped to other servers to propagate writes
@@ -124,24 +125,12 @@ type HealthResponse struct {
 // any request that changes these values must be written to disk before
 // responding to the request.
 
-// DumpToFile writes payload to file (overwrites file if it exists)
-func DumpToFile(filename string, payload string) error {
-	p := []byte(payload)
-	return ioutil.WriteFile(filename, p, 0644)
-}
-
-// ReadFromFile reads file contents back as a string
-func ReadFromFile(filename string) (string, error) {
-	data, err := ioutil.ReadFile(filename)
-	return string(data), err
-}
-
 // SetTerm records term and vote in non-volatile state
 func (n *Node) SetTerm(newTerm int, votedFor string) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
 	vote := fmt.Sprintf("%d, %s\n", newTerm, votedFor)
-	return DumpToFile(n.config.TermFile, vote)
+	return fileutils.Write(n.config.TermFile, vote)
 }
 
 // SetLog records new log contents in non-volatile state
@@ -151,7 +140,7 @@ func (n *Node) SetLog(newLog []LogRecord) error {
 	for _, l := range newLog {
 		logString = logString + fmt.Sprintf("%d, %s\n", l.Term, l.Value)
 	}
-	return DumpToFile(n.config.LogFile, logString)
+	return fileutils.Write(n.config.LogFile, logString)
 }
 
 // Volatile state functions
@@ -305,7 +294,7 @@ func NewNode(config NodeConfig) (*Node, error) {
 		term = 0
 		votedFor = ""
 	} else {
-		raw, _ := ReadFromFile(config.TermFile)
+		raw, _ := fileutils.Read(config.TermFile)
 		dat := strings.Split(raw, " ")
 		term, _ = strconv.Atoi(dat[0])
 		votedFor = dat[1]
@@ -316,7 +305,7 @@ func NewNode(config NodeConfig) (*Node, error) {
 	if err2 != nil {
 		logs = make([]LogRecord, 0, 0)
 	} else {
-		raw, _ := ReadFromFile(config.LogFile)
+		raw, _ := fileutils.Read(config.LogFile)
 		rows := strings.Split(raw, "\n")
 		for _, row := range rows {
 			dat := strings.Split(row, " ")
