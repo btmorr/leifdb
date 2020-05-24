@@ -44,7 +44,7 @@ func TestHealthRoute(t *testing.T) {
 	}
 }
 
-func TestVoteOldTerm(t *testing.T) {
+func TestVote(t *testing.T) {
 	addr := "localhost:8080"
 
 	// Node should come up and become the leader of a single-node cluster
@@ -140,7 +140,16 @@ func TestPersistence(t *testing.T) {
 	testTerm := "5 localhost:8181\n"
 	fileutils.Write(config.TermFile, testTerm)
 
-	testLog := "1 test\n2 other\n"
+	logs := []LogRecord{
+		LogRecord{Term: 1, Value: "test"},
+		LogRecord{Term: 2, Value: "other"},
+		LogRecord{Term: 3, Value: "stuff"}}
+
+	testLog := ""
+	for _, l := range logs {
+		logString := fmt.Sprintf("%d %s", l.Term, l.Value)
+		testLog = testLog + logString + "\n"
+	}
 	fileutils.Write(config.LogFile, testLog)
 
 	termData, e1 := fileutils.Read(config.TermFile)
@@ -165,7 +174,131 @@ func TestPersistence(t *testing.T) {
 		t.Error("Term not loaded correctly. Found term: ", node.Term)
 	}
 
-	if len(node.log) != 2 {
+	for idx, l := range node.log {
+		if l != logs[idx] {
+			t.Error("Log mismatch:", l, logs[idx])
+		}
+	}
+	if len(node.log) != 3 {
 		t.Error("Incorrect number of logs loaded. Number found: ", len(node.log))
+	}
+}
+
+func TestAppend(t *testing.T) {
+	addr := "localhost:8080"
+	testDir, _ := CreateTestDir()
+	defer RemoveTestDir(testDir)
+	config := NewNodeConfig(testDir, addr)
+
+	testTerm := "5 localhost:8181\n"
+	fileutils.Write(config.TermFile, testTerm)
+
+	logs := []LogRecord{
+		LogRecord{Term: 1, Value: "Harry"},
+		LogRecord{Term: 2, Value: "Ron"},
+		LogRecord{Term: 5, Value: "Hermione"}}
+
+	testLog := ""
+	for _, l := range logs {
+		logString := fmt.Sprintf("%d %s", l.Term, l.Value)
+		testLog = testLog + logString + "\n"
+	}
+	fileutils.Write(config.LogFile, testLog)
+
+	node, _ := NewNode(config)
+	router := buildRouter(node)
+
+	validLeaderId := "localhost:8181"
+	invalidLeaderId := "localhost:12345"
+	// --- Part 1 ---
+	// Construct an empty append request for an expired term
+	body1 := AppendBody{
+		Term:         node.Term - 1,
+		LeaderId:     validLeaderId,
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		Entries:      make([]LogRecord, 0, 0),
+		LeaderCommit: 0}
+
+	b1, _ := json.Marshal(body1)
+	br1 := bytes.NewReader(b1)
+
+	w1 := httptest.NewRecorder()
+	req1, _ := http.NewRequest("POST", "/append", br1)
+	router.ServeHTTP(w1, req1)
+
+	if w1.Code != http.StatusConflict {
+		t.Error("Append response status for expired term should be 409")
+	}
+
+	// --- Part 2 ---
+	// Construct an empty append request from an invalid leader
+	body2 := AppendBody{
+		Term:         node.Term,
+		LeaderId:     invalidLeaderId,
+		PrevLogIndex: 2,
+		PrevLogTerm:  5,
+		Entries:      make([]LogRecord, 0, 0),
+		LeaderCommit: 2}
+
+	b2, _ := json.Marshal(body2)
+	br2 := bytes.NewReader(b2)
+
+	w2 := httptest.NewRecorder()
+	req2, _ := http.NewRequest("POST", "/append", br2)
+	router.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusConflict {
+		t.Error("Append response status for invalid leader should be 409")
+	}
+
+	// --- Part 3 ---
+	// Construct a valid append request
+	body3 := AppendBody{
+		Term:         node.Term,
+		LeaderId:     validLeaderId,
+		PrevLogIndex: 2,
+		PrevLogTerm:  5,
+		Entries:      make([]LogRecord, 0, 0),
+		LeaderCommit: 2}
+
+	b3, _ := json.Marshal(body3)
+	br3 := bytes.NewReader(b3)
+
+	w3 := httptest.NewRecorder()
+	req3, _ := http.NewRequest("POST", "/append", br3)
+	router.ServeHTTP(w3, req3)
+
+	if w3.Code != http.StatusOK {
+		t.Error("Append response status for valid request should be 200")
+	}
+
+	// --- Part 4 ---
+	// Construct a valid append request with entries
+	record := LogRecord{Term: node.Term, Value: "Ginny"}
+	body4 := AppendBody{
+		Term:         node.Term,
+		LeaderId:     validLeaderId,
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		Entries:      []LogRecord{record},
+		LeaderCommit: 0}
+
+	b4, _ := json.Marshal(body4)
+	br4 := bytes.NewReader(b4)
+
+	w4 := httptest.NewRecorder()
+	req4, _ := http.NewRequest("POST", "/append", br4)
+	router.ServeHTTP(w4, req4)
+
+	if w4.Code != http.StatusOK {
+		t.Error("Append response status for valid request should be 200")
+	}
+
+	expectedLog := append(logs, record)
+	for idx, l := range node.log {
+		if l != expectedLog[idx] {
+			t.Error("Log failed to update on valid append")			
+		}
 	}
 }
