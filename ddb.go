@@ -29,15 +29,16 @@ type LogRecord struct {
 	Value string `json:"value"`
 }
 
-// A Role is one of Leader, Candidate, or Follower
-type Role int
+// A role is one of Leader, Candidate, or Follower
+type role int
 
 const (
-	follower Role = iota
+	follower role = iota
 	candidate
 	leader
 )
 
+// NodeConfig contains configurable properties for a node
 type NodeConfig struct {
 	Id       string
 	DataDir  string
@@ -55,7 +56,7 @@ type Node struct {
 	electionTimer   *time.Timer
 	appendTimeout   time.Duration
 	appendTicker    *time.Ticker
-	State           Role
+	State           role
 	haltAppend      chan bool
 	Term            int
 	votedFor        string
@@ -123,44 +124,44 @@ type HealthResponse struct {
 // any request that changes these values must be written to disk before
 // responding to the request.
 
-// Writes payload to file (overwrites file if it exists)
+// DumpToFile writes payload to file (overwrites file if it exists)
 func DumpToFile(filename string, payload string) error {
 	p := []byte(payload)
 	return ioutil.WriteFile(filename, p, 0644)
 }
 
-// Reads payload from file
+// ReadFromFile reads file contents back as a string
 func ReadFromFile(filename string) (string, error) {
 	data, err := ioutil.ReadFile(filename)
 	return string(data), err
 }
 
-// Record term and vote in non-volatile state
-func (n *Node) SetTerm(newTerm int, votedFor string) {
+// SetTerm records term and vote in non-volatile state
+func (n *Node) SetTerm(newTerm int, votedFor string) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
 	vote := fmt.Sprintf("%d, %s\n", newTerm, votedFor)
-	DumpToFile(n.config.TermFile, vote)
+	return DumpToFile(n.config.TermFile, vote)
 }
 
-// Record log in non-volatile state
-func (n *Node) SetLog(newLog []LogRecord) {
+// SetLog records new log contents in non-volatile state
+func (n *Node) SetLog(newLog []LogRecord) error {
 	n.log = newLog
 	logString := ""
 	for _, l := range newLog {
 		logString = logString + fmt.Sprintf("%d, %s\n", l.Term, l.Value)
 	}
-	DumpToFile(n.config.LogFile, logString)
+	return DumpToFile(n.config.LogFile, logString)
 }
 
 // Volatile state functions
 // Other state should not be written to disk, and should be re-initialized on
 // restart, but may have other side-effects that happen on state change
 
-// SetState designates the Node as one of the roles in the Role enumeration,
+// SetState designates the Node as one of the roles in the role enumeration,
 // and handles any side-effects that should happen specifically on state
 // transition
-func (n *Node) SetState(newState Role) {
+func (n *Node) SetState(newState role) {
 	n.State = newState
 	// todo: move starting/stopping election timer and append ticker here
 }
@@ -522,7 +523,7 @@ func buildRouter(node *Node) *gin.Engine {
 	return router
 }
 
-// Get preferred outbound ip of this machine
+// GetOutboundIP returns ip of preferred interface this machine
 func GetOutboundIP() net.IP {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
@@ -535,8 +536,8 @@ func GetOutboundIP() net.IP {
 	return localAddr.IP
 }
 
-// Create the directory if it does not exist (fail if path exists and is
-// not a directory)
+// EnsureDirectory creates the directory if it does not exist (fail if path
+// exists and is not a directory)
 func EnsureDirectory(path string) error {
 	_, err := os.Stat(path)
 	if os.IsNotExist(err) {
