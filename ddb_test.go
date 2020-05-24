@@ -11,12 +11,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/btmorr/go-raft/internal/fileutils"
+	"github.com/btmorr/leifdb/internal/fileutils"
 )
 
 func CreateTestDir() (string, error) {
 	tmpDir := os.TempDir()
-	dataDir := filepath.Join(tmpDir, ".tmp-go-raft")
+	dataDir := filepath.Join(tmpDir, ".tmp-leifdb")
 	err := EnsureDirectory(dataDir)
 	return dataDir, err
 }

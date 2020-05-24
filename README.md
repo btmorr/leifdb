@@ -1,4 +1,4 @@
-# Raft practice implementation in Go
+# Leif Db
 
 [![Go Report Card][report-card-badge]][report-card]
 [![License][license-badge]][license]
@@ -129,9 +129,9 @@ General application
 
 [gin-gonic/gin]: https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview
 
-[report-card]: https://goreportcard.com/report/github.com/btmorr/go-raft
-[report-card-badge]: https://goreportcard.com/badge/github.com/btmorr/go-raft
-[license]: https://github.com/btmorr/go-raft/LICENSE
-[license-badge]: https://img.shields.io/github/license/btmorr/go-raft.svg
-[build]: https://travis-ci.com/btmorr/go-raft
-[build-badge]: https://travis-ci.com/btmorr/go-raft.svg?branch=master
+[report-card]: https://goreportcard.com/report/github.com/btmorr/leifdb
+[report-card-badge]: https://goreportcard.com/badge/github.com/btmorr/leifdb
+[license]: https://github.com/btmorr/leifdb/LICENSE
+[license-badge]: https://img.shields.io/github/license/btmorr/leifdb.svg
+[build]: https://travis-ci.com/btmorr/leifdb
+[build-badge]: https://travis-ci.com/btmorr/leifdb.svg?branch=master

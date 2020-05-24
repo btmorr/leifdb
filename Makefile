@@ -2,11 +2,15 @@
 test: app
 	go test
 
-app:
+app: clean
 	gofmt -w *.go
 	go fix
-	go clean
 	go build -o app
+
+.PHONY: clean
+clean:
+	go clean
+	rm ./app || true
 
 .PHONY: run
 run: app
