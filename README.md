@@ -4,13 +4,11 @@
 [![License][license-badge]][license]
 [![Build Status][build-badge]][build]
 
-This is an attempt to create a clustered K-V store application that implements [Raft] for consistency, in Go, based on the explanation of Raft from [The Secret Lives of Data] and the [short Raft paper]. If/when I get it working for the simplest case (leader accepts GET and POST requests to a specified path to read and write data respectively), then I'll think about other features, such as full OpenAPI support, something other than K-V, a dashboard, etc.
+This is an attempt to create a clustered K-V store application that implements [Raft] for consistency, in Go, based on the [short Raft paper]--something along the lines of [etcd], which backs [Kubernetes]; [Consul], which backs [Vault] and other HashiCorp tools; or [ZooKeeper], which backs most [Hadoop]-related projects. (etcd and Consul use Raft, ZooKeeper uses a similar algorithm called [Zab], and there are others that use other algorithms such as [Paxos])
 
 Contributions are welcome! Check out the [Contributing Guide] for more info on how to make feature requests, subtmit bug reports, or create pull requests.
 
 ## Build and run
-
-Currently, the server is a single node that stores a single value.
 
 The simplest way to build and test the application is to enter:
 
@@ -61,16 +59,24 @@ Or on Windows:
 
 ### Database requests
 
-To write a value:
+(Under construction...endpoints don't all consistently work yet)
+
+To create/update a value:
 
 ```
-curl -i -X POST localhost:8080/ -d '{"value": "test"}'
+curl -i -X POST localhost:8080/ -d '{"key": "someKey", "value": "test"}'
 ```
 
 To read the current value:
 
 ```
-curl -i localhost:8080/
+curl -i -X GET localhost:8080/?key=someKey
+```
+
+To remove/delete a key from the database:
+
+```
+curl -i -X DELETE localhost:8080/?key=someKey
 ```
 
 ### Raft requests
@@ -86,7 +92,7 @@ curl -i -X POST localhost:8080/vote -d '{"term": 1, "candidateId": "localhost:12
 To send an append-logs message (when acting as leader):
 
 ```
-curl -i -X POST localhost:8080/append -d '{"term": 1, "leaderId": "localhost:12345", "lastLogIndex": 0, "lastLogTerm": 0, "entries": [{"term": 1, "value": "test"}], leaderCommit: 0}'
+curl -i -X POST localhost:8080/append -d '{"term": 1, "leaderId": "localhost:12345", "prevLogIndex": 0, "prevLogTerm": 0, "entries": [{"term": 1, "value": "test"}], leaderCommit: 0}'
 ```
 
 ### Other requests
@@ -101,26 +107,43 @@ Currently, the return code of this endpoint is the main indicator of health (200
 
 ## Todo
 
-Raft
-
+Raft basics (everything from the [short Raft paper]):
 - leader index volatile state
-- add log comparison check to vote handler
+- leader keep track of log index for each other node, send append-logs requests to each based on last known log index
+- add log comparison check to vote handler (election restriction)
 - add more checking on most recently seen term
-- add commit/applied logic
-- switch data write to append to leader log
-- separate db into own class, and expand capabilities beyond a single value
+- Add commit/applied logic
+- Separate db into own class, and expand capabilities beyond a single value
 
+Raft complete (additional functionality in the [full Raft paper]):
+- log compaction
+- modifications
 
-General application
+General application:
+- Probably use protobuf for log storage on disk instead of strings (for easier marshalling/unmarshalling, but also to handle missing value fields at all)
+- Add configuration options (cli? config file?)
+- Add scripts for starting a cluster / changing membership
+- OpenAPI compatibility for HTTP API?
+- Dashboard for visualization / management of a cluster?
 
-- write more tests
-- separate logic out into smaller functions/modules/packages
-- add configuration options (cli? config file?)
-- add scripts for starting a cluster / changing membership
+## Prior art
+
+Aside from the Raft papers themselves, here are some related resources:
+- [The Secret Lives of Data](http://thesecretlivesofdata.com/raft/)
+- [Eli Bendersky's blog post](https://eli.thegreenplace.net/2020/implementing-raft-part-0-introduction/) [which I'm explicitly not reading until after I get an initial version of my own done so that I can muddle along and figure things out the hard way, but leaving this note here for later / for others' benefit]
+- A [talk on Raft](https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained/) from the [Consul] team
 
 [Raft]: https://raft.github.io/
-[The Secret Lives of Data]: http://thesecretlivesofdata.com/raft/
 [short Raft paper]: https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf
+[full Raft paper]: https://raft.github.io/raft.pdf
+
+[etcd]: https://etcd.io
+[Kubernetes]: https://kubernetes.io/
+[Consul]: https://hashicorp.com/products/consul
+[Vault]: https://hashicorp.com/products/vault
+[ZooKeeper]: https://zookeeper.apache.org/
+[Zab]: https://www.cs.cornell.edu/courses/cs6452/2012sp/papers/zab-ieee.pdf
+[Paxos]: http://research.microsoft.com/users/lamport/pubs/paxos-simple.pdf
 
 [gin-gonic/gin]: https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview
 

@@ -5,7 +5,7 @@ test: app
 app:
 	go clean
 	rm ./app || true
-	gofmt -w -s *.go
+	gofmt -w -s .
 	go fix
 	go build -o app
 

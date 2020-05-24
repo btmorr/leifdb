@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/btmorr/leifdb/internal/fileutils"
+	. "github.com/btmorr/leifdb/internal/types"
 )
 
 func CreateTestDir() (string, error) {
@@ -137,20 +138,9 @@ func TestPersistence(t *testing.T) {
 
 	config := NewNodeConfig(testDir, addr)
 
+	// Termfile persistence
 	testTerm := "5 localhost:8181\n"
 	fileutils.Write(config.TermFile, testTerm)
-
-	logs := []LogRecord{
-		LogRecord{Term: 1, Value: "test"},
-		LogRecord{Term: 2, Value: "other"},
-		LogRecord{Term: 3, Value: "stuff"}}
-
-	testLog := ""
-	for _, l := range logs {
-		logString := fmt.Sprintf("%d %s", l.Term, l.Value)
-		testLog = testLog + logString + "\n"
-	}
-	fileutils.Write(config.LogFile, testLog)
 
 	termData, e1 := fileutils.Read(config.TermFile)
 	if e1 != nil {
@@ -160,12 +150,26 @@ func TestPersistence(t *testing.T) {
 		t.Error("Term data file roundtrip failed")
 	}
 
+	// Logfile persistence
+	logs := []LogRecord{
+		{Term: 1, Record: "set test run"},
+		{Term: 2, Record: "set other questions"},
+		{Term: 3, Record: "set stuff there"}}
+
+	testLog := ""
+	for _, l := range logs {
+		logString := fmt.Sprintf("%d %s", l.Term, l.Record)
+		testLog = testLog + logString + "\n"
+	}
+	fileutils.Write(config.LogFile, testLog)
+
 	logData, e2 := fileutils.Read(config.LogFile)
+
 	if e2 != nil {
 		t.Error(e2)
 	}
 	if logData != testLog {
-		t.Error("Term data file roundtrip failed")
+		t.Error("Log data file roundtrip failed")
 	}
 
 	node, _ := NewNode(config)
@@ -194,13 +198,13 @@ func TestAppend(t *testing.T) {
 	fileutils.Write(config.TermFile, testTerm)
 
 	logs := []LogRecord{
-		LogRecord{Term: 1, Value: "Harry"},
-		LogRecord{Term: 2, Value: "Ron"},
-		LogRecord{Term: 5, Value: "Hermione"}}
+		{Term: 1, Record: "set Harry present"},
+		{Term: 2, Record: "set Ron absent"},
+		{Term: 5, Record: "set Hermione present"}}
 
 	testLog := ""
 	for _, l := range logs {
-		logString := fmt.Sprintf("%d %s", l.Term, l.Value)
+		logString := fmt.Sprintf("%d %s", l.Term, l.Record)
 		testLog = testLog + logString + "\n"
 	}
 	fileutils.Write(config.LogFile, testLog)
@@ -275,7 +279,7 @@ func TestAppend(t *testing.T) {
 
 	// --- Part 4 ---
 	// Construct a valid append request with entries
-	record := LogRecord{Term: node.Term, Value: "Ginny"}
+	record := LogRecord{Term: node.Term, Record: "set Ginny adventuring"}
 	body4 := AppendBody{
 		Term:         node.Term,
 		LeaderId:     validLeaderId,
@@ -298,7 +302,7 @@ func TestAppend(t *testing.T) {
 	expectedLog := append(logs, record)
 	for idx, l := range node.log {
 		if l != expectedLog[idx] {
-			t.Error("Log failed to update on valid append")			
+			t.Error("Log failed to update on valid append")
 		}
 	}
 }

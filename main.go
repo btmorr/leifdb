@@ -21,22 +21,8 @@ import (
 	"time"
 
 	"github.com/btmorr/leifdb/internal/fileutils"
+	. "github.com/btmorr/leifdb/internal/types"
 	"github.com/gin-gonic/gin"
-)
-
-// A LogRecord is a Raft log object, shipped to other servers to propagate writes
-type LogRecord struct {
-	Term  int    `json:"term"`
-	Value string `json:"value"`
-}
-
-// A role is one of Leader, Candidate, or Follower
-type role int
-
-const (
-	follower role = iota
-	candidate
-	leader
 )
 
 // NodeConfig contains configurable properties for a node
@@ -51,13 +37,13 @@ type NodeConfig struct {
 // algorithm's state machine. At any one time, its role may be Leader, Candidate,
 // or Follower, and have different responsibilities depending on its role
 type Node struct {
-	Value           string
+	Value           map[string]string
 	NodeId          string
 	electionTimeout time.Duration
 	electionTimer   *time.Timer
 	appendTimeout   time.Duration
 	appendTicker    *time.Ticker
-	State           role
+	State           Role
 	haltAppend      chan bool
 	Term            int
 	votedFor        string
@@ -68,54 +54,6 @@ type Node struct {
 	lastApplied     int
 	log             []LogRecord
 	config          NodeConfig
-}
-
-// Data types for [un]marshalling JSON
-
-// A WriteBody is a request body template for write route
-type WriteBody struct {
-	Value string `json:"value"`
-}
-
-// A WriteResponse is a response body template for the write route
-type WriteResponse struct {
-	Value string `json:"value"`
-}
-
-// A VoteBody is a request body template for the request-vote route
-type VoteBody struct {
-	Term         int    `json:"term"`
-	CandidateId  string `json:"candidateId"`
-	LastLogIndex int    `json:"lastLogIndex"`
-	LastLogTerm  int    `json:"lastLogTerm"`
-}
-
-// A VoteResponse is a response body template for the request-vote route
-type VoteResponse struct {
-	Term        int  `json:"term"`
-	VoteGranted bool `json:"voteGranted"`
-}
-
-// An AppendBody is a request body template for the log-append route
-type AppendBody struct {
-	Term         int         `json:"term"`
-	LeaderId     string      `json:"leaderId"`
-	PrevLogIndex int         `json:"prevLogIndex"`
-	PrevLogTerm  int         `json:"prevLogTerm"`
-	Entries      []LogRecord `json:"entries"`
-	LeaderCommit int         `json:"leaderCommit"`
-}
-
-// An AppendResponse is a response body template for the log-append route
-type AppendResponse struct {
-	Term    int  `json:"term"`
-	Success bool `json:"success"`
-}
-
-// A HealthResponse is a response body template for the health route [note: the
-//health endpoint takes a GET request, so there is no corresponding Body type]
-type HealthResponse struct {
-	Status string `json:"status"`
 }
 
 // Client methods for managing raft state
@@ -135,10 +73,13 @@ func (n *Node) SetTerm(newTerm int, votedFor string) error {
 
 // SetLog records new log contents in non-volatile state
 func (n *Node) SetLog(newLog []LogRecord) error {
+	// todo: modify log index logic to use 1-origin numbering
 	n.log = newLog
 	logString := ""
 	for _, l := range newLog {
-		logString = logString + fmt.Sprintf("%d %s\n", l.Term, l.Value)
+		// persistence format: "term set key value" or "term del key"
+		record := fmt.Sprintf("%d %s\n", l.Term, l.Record)
+		logString = logString + record
 	}
 	return fileutils.Write(n.config.LogFile, logString)
 }
@@ -147,10 +88,10 @@ func (n *Node) SetLog(newLog []LogRecord) error {
 // Other state should not be written to disk, and should be re-initialized on
 // restart, but may have other side-effects that happen on state change
 
-// SetState designates the Node as one of the roles in the role enumeration,
+// SetState designates the Node as one of the roles in the Role enumeration,
 // and handles any side-effects that should happen specifically on state
 // transition
-func (n *Node) SetState(newState role) {
+func (n *Node) SetState(newState Role) {
 	n.State = newState
 	// todo: move starting/stopping election timer and append ticker here
 }
@@ -221,7 +162,7 @@ func (n Node) requestVote(host string, term int) (bool, error) {
 // is elected).
 func (n *Node) doElection() {
 	log.Println("Starting Election")
-	n.SetState(candidate)
+	n.SetState(Candidate)
 	log.Println("Becoming candidate")
 
 	n.SetTerm(n.Term+1, n.NodeId)
@@ -248,7 +189,7 @@ func (n *Node) doElection() {
 			"Election succeeded [",
 			numVotes, "out of", majority,
 			"needed]")
-		n.SetState(leader)
+		n.SetState(Leader)
 		log.Println("Becoming leader")
 
 		n.electionTimer.Stop()
@@ -263,7 +204,7 @@ func (n *Node) doElection() {
 			"Election failed [",
 			numVotes, "out of", majority,
 			"needed]")
-		n.SetState(follower)
+		n.SetState(Follower)
 		log.Println("Becoming follower")
 	}
 }
@@ -299,7 +240,6 @@ func NewNode(config NodeConfig) (*Node, error) {
 	} else {
 		raw, _ := fileutils.Read(config.TermFile)
 		dat := strings.Split(strings.TrimSpace(raw), " ")
-		fmt.Println("Raw term:", dat[0])
 		term, _ = strconv.Atoi(dat[0])
 		votedFor = dat[1]
 		log.Println("Term data found. Current term:", term)
@@ -313,22 +253,26 @@ func NewNode(config NodeConfig) (*Node, error) {
 		raw, _ := fileutils.Read(config.LogFile)
 		rows := strings.Split(raw, "\n")
 		for _, row := range rows {
-			dat := strings.Split(row, " ")
+			dat := strings.SplitN(row, " ", 2)
 			if len(dat) == 2 {
 				logTerm, _ := strconv.Atoi(dat[0])
-				logs = append(logs, LogRecord{Term: logTerm, Value: dat[1]})
+				record := dat[1]
+				logRecord := LogRecord{
+					Term:   logTerm,
+					Record: record}
+				logs = append(logs, logRecord)
 			}
 		}
 	}
 
 	n := Node{
-		Value:           "",
+		Value:           make(map[string]string),
 		NodeId:          config.Id,
 		electionTimeout: electionTimeout,
 		electionTimer:   time.NewTimer(electionTimeout),
 		appendTimeout:   appendTimeout,
 		appendTicker:    time.NewTicker(appendTimeout),
-		State:           follower,
+		State:           Follower,
 		haltAppend:      make(chan bool),
 		Term:            term,
 		votedFor:        votedFor,
@@ -352,23 +296,39 @@ func NewNode(config NodeConfig) (*Node, error) {
 // Server methods for handling data read/write
 
 // Handler for POSTs to the data endpoint (client write)
-func (n *Node) handleDataWrite(c *gin.Context) {
+func (n *Node) handleWrite(c *gin.Context) {
 	// todo: revise to log-append / commit protocol once elections work
 	var data WriteBody
 	if err := c.ShouldBindJSON(&data); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if n.State != Leader {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Writes must be made to leader"})
+		return
+	}
 
-	log.Println("New value: ", data.Value)
-	n.Value = data.Value
+	record := fmt.Sprintf("%s %s %s", "set", data.Key, data.Value)
+	newLog := LogRecord{
+		Term:   n.Term,
+		Record: record}
+	err := n.SetLog(append(n.log, newLog))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+	} else {
+		c.JSON(http.StatusOK, gin.H{"value": n.Value})
+	}
 
-	c.JSON(http.StatusOK, gin.H{"value": n.Value})
 }
 
 // Handler for GETs to the data endpoint (client read)
-func (n *Node) handleDataRead(c *gin.Context) {
+func (n *Node) handleRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"value": n.Value})
+}
+
+// Handler for DELETEs to the data endpoint (client delete)
+func (n *Node) handleDelete(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented"})
 }
 
 // When a Raft node is a follower or candidate and receives a message from a
@@ -419,10 +379,10 @@ func (n *Node) handleVote(c *gin.Context) {
 	} else {
 		log.Println("Voting for ", body.CandidateId, " for term ", body.Term)
 		n.SetTerm(body.Term, body.CandidateId)
-		if n.State == leader {
+		if n.State == Leader {
 			n.haltAppend <- true
 		}
-		n.SetState(follower)
+		n.SetState(Follower)
 		n.resetElectionTimer()
 
 		// todo: check candidate's log details
@@ -484,7 +444,7 @@ func (n *Node) reconcileLogs(body AppendBody) {
 // checkPrevious returns true if Node.logs contains an entry at the specified
 // index with the specified term, otherwise false
 func (n *Node) checkPrevious(prevIndex int, prevTerm int) bool {
-	return prevIndex <len(n.log) && n.log[prevIndex].Term == prevTerm
+	return prevIndex < len(n.log) && n.log[prevIndex].Term == prevTerm
 }
 
 // Handler for append-log messages from leader nodes
@@ -520,12 +480,12 @@ func (n *Node) handleAppend(c *gin.Context) {
 	}
 	if valid {
 		// For any valid append received during an election, cancel election
-		if n.State == candidate {
-			n.SetState(follower)
+		if n.State == Candidate {
+			n.SetState(Follower)
 		}
 
 		// only reset the election timer on append from a valid leader
-		n.resetElectionTimer()		
+		n.resetElectionTimer()
 	}
 	// finally
 	c.JSON(status, gin.H{"term": n.Term, "success": success})
@@ -543,8 +503,9 @@ func buildRouter(node *Node) *gin.Engine {
 	router.GET("/health", handleHealth)
 	router.POST("/vote", node.handleVote)
 	router.POST("/append", node.handleAppend)
-	router.GET("/", node.handleDataRead)
-	router.POST("/", node.handleDataWrite)
+	router.GET("/", node.handleRead)
+	router.POST("/", node.handleWrite)
+	router.DELETE("/", node.handleDelete)
 
 	return router
 }
