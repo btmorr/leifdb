@@ -129,7 +129,7 @@ type HealthResponse struct {
 func (n *Node) SetTerm(newTerm int, votedFor string) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
-	vote := fmt.Sprintf("%d, %s\n", newTerm, votedFor)
+	vote := fmt.Sprintf("%d %s\n", newTerm, votedFor)
 	return fileutils.Write(n.config.TermFile, vote)
 }
 
@@ -138,7 +138,7 @@ func (n *Node) SetLog(newLog []LogRecord) error {
 	n.log = newLog
 	logString := ""
 	for _, l := range newLog {
-		logString = logString + fmt.Sprintf("%d, %s\n", l.Term, l.Value)
+		logString = logString + fmt.Sprintf("%d %s\n", l.Term, l.Value)
 	}
 	return fileutils.Write(n.config.LogFile, logString)
 }
@@ -168,7 +168,7 @@ func (n *Node) startAppendTicker() {
 				return
 			case <-n.appendTicker.C:
 				// placeholder for generating append requests
-				log.Print(".")
+				fmt.Print(".")
 				continue
 			}
 		}
@@ -223,7 +223,9 @@ func (n *Node) doElection() {
 	log.Println("Starting Election")
 	n.SetState(candidate)
 	log.Println("Becoming candidate")
-	n.Term = n.Term + 1
+
+	n.SetTerm(n.Term+1, n.NodeId)
+
 	numNodes := len(n.otherNodes)
 	majority := (numNodes / 2) + 1
 
@@ -293,11 +295,14 @@ func NewNode(config NodeConfig) (*Node, error) {
 	if err != nil {
 		term = 0
 		votedFor = ""
+		log.Println("No term data found, starting at term 0")
 	} else {
 		raw, _ := fileutils.Read(config.TermFile)
 		dat := strings.Split(raw, " ")
+		fmt.Println("Raw term:", dat[0])
 		term, _ = strconv.Atoi(dat[0])
 		votedFor = dat[1]
+		log.Println("Term data found. Current term:", term)
 	}
 
 	var logs []LogRecord
@@ -406,15 +411,14 @@ func (n *Node) handleVote(c *gin.Context) {
 	var status int
 	var vote gin.H
 	if body.Term <= n.Term {
-		// Use 409 Conflict to represent invalid term
-		n.Term = n.Term + 1
+		// Increment term, vote for same node as previous term (is this correct?)
+		n.SetTerm(n.Term+1, n.votedFor)
 		log.Println("Expired term vote received. New term: ", n.Term)
 		status = http.StatusConflict
 		vote = gin.H{"term": n.Term, "voteGranted": false}
 	} else {
 		log.Println("Voting for ", body.CandidateId, " for term ", body.Term)
-		n.Term = body.Term
-		n.votedFor = body.CandidateId
+		n.SetTerm(body.Term, body.CandidateId)
 		if n.State == leader {
 			n.haltAppend <- true
 		}
@@ -567,7 +571,6 @@ func main() {
 	}
 
 	config := NewNodeConfig(dataDir, addr)
-	log.Println("Persistent data in " + config.DataDir)
 
 	node, err := NewNode(config)
 	if err != nil {
