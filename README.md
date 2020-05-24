@@ -103,12 +103,10 @@ Currently, the return code of this endpoint is the main indicator of health (200
 
 Raft
 
-- basic append client
 - leader index volatile state
 - add log comparison check to vote handler
 - add more checking on most recently seen term
 - add commit/applied logic
-- check logic on receiving append request when leader
 - switch data write to append to leader log
 - separate db into own class, and expand capabilities beyond a single value
 

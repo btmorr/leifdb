@@ -298,7 +298,7 @@ func NewNode(config NodeConfig) (*Node, error) {
 		log.Println("No term data found, starting at term 0")
 	} else {
 		raw, _ := fileutils.Read(config.TermFile)
-		dat := strings.Split(raw, " ")
+		dat := strings.Split(strings.TrimSpace(raw), " ")
 		fmt.Println("Raw term:", dat[0])
 		term, _ = strconv.Atoi(dat[0])
 		votedFor = dat[1]
@@ -435,6 +435,58 @@ func (n *Node) handleVote(c *gin.Context) {
 	c.JSON(status, vote)
 }
 
+// validateAppend performs all checks for valid append request
+func (n *Node) validateAppend(term int, leaderId string) bool {
+	var success bool
+	success = true
+	// reply false if req term < current term
+	if term < n.Term {
+		success = false
+	}
+	if leaderId != n.votedFor {
+		byz_msg1 := "Append request from LeaderId mismatch for this term. "
+		byz_msg2 := "Possible byzantine actor: " + leaderId + " != " + n.votedFor
+		log.Println(byz_msg1 + byz_msg2)
+		success = false
+	}
+	return success
+}
+
+// If an existing entry conflicts with a new one (same idx diff term),
+// reconcileLogs deletes the existing entry and any that follow
+func (n *Node) reconcileLogs(body AppendBody) {
+	mismatchIdx := -1
+	if body.PrevLogIndex < len(n.log) {
+		overlappingEntries := n.log[body.PrevLogIndex:]
+		for i, rec := range overlappingEntries {
+			if rec.Term != body.Entries[i].Term {
+				mismatchIdx = body.PrevLogIndex + i
+				break
+			}
+		}
+	}
+	if mismatchIdx >= 0 {
+		n.log = n.log[:mismatchIdx]
+	}
+	// append any entries not already in log
+	offset := len(n.log) - body.PrevLogIndex
+	n.log = append(n.log, body.Entries[offset:]...)
+	// update commit idx
+	if body.LeaderCommit > n.commitIndex {
+		if body.LeaderCommit < len(n.log) {
+			n.commitIndex = body.LeaderCommit
+		} else {
+			n.commitIndex = len(n.log)
+		}
+	}
+}
+
+// checkPrevious returns true if Node.logs contains an entry at the specified
+// index with the specified term, otherwise false
+func (n *Node) checkPrevious(prevIndex int, prevTerm int) bool {
+	return prevIndex <len(n.log) && n.log[prevIndex].Term == prevTerm
+}
+
 // Handler for append-log messages from leader nodes
 func (n *Node) handleAppend(c *gin.Context) {
 	var body AppendBody
@@ -443,59 +495,40 @@ func (n *Node) handleAppend(c *gin.Context) {
 		return
 	}
 
-	success := true
-	// reply false if req term < current term
-	if body.Term < n.Term {
-		success = false
-	}
 	// if none of the failure conditions fired...
-	if success {
-		// reply false if log does not contain entry at req idx matching req term
-		if body.PrevLogIndex > len(n.log) {
-			success = false
-		} else {
-			lastLog := n.log[body.PrevLogIndex]
-			if lastLog.Term != body.PrevLogTerm {
-				success = false
-			}
-		}
-		// if an existing entry conflicts with a new one (same idx diff term),
-		// delete the existing entry and any that follow
-		mismatchIdx := -1
-		if body.PrevLogIndex < len(n.log) {
-			overlappingEntries := n.log[body.PrevLogIndex:]
-			for i, rec := range overlappingEntries {
-				if rec.Term != body.Entries[i].Term {
-					mismatchIdx = body.PrevLogIndex + i
-					break
-				}
-			}
-		}
-		if mismatchIdx >= 0 {
-			n.log = n.log[:mismatchIdx]
-		}
-		// append any entries not already in log
-		offset := len(n.log) - body.PrevLogIndex
-		n.log = append(n.log, body.Entries[offset:]...)
-		// update commit idx
-		if body.LeaderCommit > n.commitIndex {
-			if body.LeaderCommit < len(n.log) {
-				n.commitIndex = body.LeaderCommit
-			} else {
-				n.commitIndex = len(n.log)
-			}
+	var status int
+	var success bool
+
+	valid := n.validateAppend(body.Term, body.LeaderId)
+	matched := n.checkPrevious(body.PrevLogIndex, body.PrevLogTerm)
+	if !valid {
+		// Invalid request
+		status = http.StatusConflict
+		success = false
+	} else if !matched {
+		// Valid request, but earlier entries needed
+		status = http.StatusOK
+		success = false
+	} else {
+		// Valid request, and all required logs present
+		if len(body.Entries) > 0 {
+			n.reconcileLogs(body)
 		}
 
-		// if a valid append is received during an election, cancel election
+		status = http.StatusOK
+		success = true
+	}
+	if valid {
+		// For any valid append received during an election, cancel election
 		if n.State == candidate {
 			n.SetState(follower)
 		}
 
 		// only reset the election timer on append from a valid leader
-		n.resetElectionTimer()
+		n.resetElectionTimer()		
 	}
 	// finally
-	c.JSON(http.StatusOK, gin.H{"term": n.Term, "success": success})
+	c.JSON(status, gin.H{"term": n.Term, "success": success})
 }
 
 // Handler for the health endpoint--not required for Raft, but useful for infrastructure
@@ -518,12 +551,16 @@ func buildRouter(node *Node) *gin.Engine {
 
 // GetOutboundIP returns ip of preferred interface this machine
 func GetOutboundIP() net.IP {
+	// UDP dial is able to succeed even if the target is not available--
+	// 8.8.8.8 is Google's public DNS--doesn't matter what the IP is, as
+	// long as it's in a public subnet
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer conn.Close()
 
+	// get the address of the outbound interface chosen for the request
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 
 	return localAddr.IP
