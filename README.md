@@ -10,7 +10,7 @@ Contributions are welcome! Check out the [Contributing Guide] for more info on h
 
 ## Build and run
 
-Currently, the server is a single node that stores a single value.
+Currently, the database stores a single value. Once that value is correctly updated via Raft, then the database portion of the app can be made more complex for full K-V storage and other functions (which will require modifying the root endpoint).
 
 The simplest way to build and test the application is to enter:
 
@@ -61,16 +61,22 @@ Or on Windows:
 
 ### Database requests
 
-To write a value:
+To create/update a value:
 
 ```
-curl -i -X POST localhost:8080/ -d '{"value": "test"}'
+curl -i -X POST localhost:8080/ -d '{"key": "someKey", "value": "test"}'
 ```
 
 To read the current value:
 
 ```
-curl -i localhost:8080/
+curl -i -X GET localhost:8080/?key=someKey
+```
+
+To remove/delete a key from the database:
+
+```
+curl -i -X DELETE localhost:8080/?key=someKey
 ```
 
 ### Raft requests
@@ -103,6 +109,7 @@ Currently, the return code of this endpoint is the main indicator of health (200
 
 Raft basics (everything from the [short Raft paper]):
 - leader index volatile state
+- leader keep track of log index for each other node, send append-logs requests to each based on last known log index
 - add log comparison check to vote handler (election restriction)
 - add more checking on most recently seen term
 - Add commit/applied logic
