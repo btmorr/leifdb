@@ -4,7 +4,7 @@
 *.dll
 *.so
 *.dylib
-go-raft
+app
 
 # Test binary, built with `go test -c`
 *.test
