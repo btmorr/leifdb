@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/btmorr/go-raft/internal/fileutils"
 )
 
 func CreateTestDir() (string, error) {
@@ -136,12 +138,12 @@ func TestPersistence(t *testing.T) {
 	config := NewNodeConfig(testDir, addr)
 
 	testTerm := "5 localhost:8181\n"
-	DumpToFile(config.TermFile, testTerm)
+	fileutils.Write(config.TermFile, testTerm)
 
 	testLog := "1 test\n2 other\n"
-	DumpToFile(config.LogFile, testLog)
+	fileutils.Write(config.LogFile, testLog)
 
-	termData, e1 := ReadFromFile(config.TermFile)
+	termData, e1 := fileutils.Read(config.TermFile)
 	if e1 != nil {
 		t.Error(e1)
 	}
@@ -149,7 +151,7 @@ func TestPersistence(t *testing.T) {
 		t.Error("Term data file roundtrip failed")
 	}
 
-	logData, e2 := ReadFromFile(config.LogFile)
+	logData, e2 := fileutils.Read(config.LogFile)
 	if e2 != nil {
 		t.Error(e2)
 	}
