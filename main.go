@@ -135,6 +135,7 @@ func (n *Node) SetTerm(newTerm int, votedFor string) error {
 
 // SetLog records new log contents in non-volatile state
 func (n *Node) SetLog(newLog []LogRecord) error {
+	// todo: modify log index logic to use 1-origin numbering
 	n.log = newLog
 	logString := ""
 	for _, l := range newLog {
@@ -359,11 +360,19 @@ func (n *Node) handleDataWrite(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if n.State != leader {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Writes must be made to leader"})
+		return
+	}
 
-	log.Println("New value: ", data.Value)
-	n.Value = data.Value
+	newLog := LogRecord{Term: n.Term, Value: data.Value}
+	err := n.SetLog(newLog)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+	} else {
+		c.JSON(http.StatusOK, gin.H{"value": n.Value})
+	}
 
-	c.JSON(http.StatusOK, gin.H{"value": n.Value})
 }
 
 // Handler for GETs to the data endpoint (client read)
