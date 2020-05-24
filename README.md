@@ -133,4 +133,4 @@ General application
 [build]: https://travis-ci.com/btmorr/leifdb
 [build-badge]: https://travis-ci.com/btmorr/leifdb.svg?branch=master
 
-[Contributing Guide]: [./CONTRIBUTING.md]
+[Contributing Guide]: ./CONTRIBUTING.md
