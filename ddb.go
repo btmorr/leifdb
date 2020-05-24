@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/btmorr/go-raft/internal/fileutils"
+	"github.com/btmorr/leifdb/internal/fileutils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -563,7 +563,7 @@ func main() {
 
 	// todo: make this configurable
 	homeDir, _ := os.UserHomeDir()
-	dataDir := filepath.Join(homeDir, ".go-raft", hashString)
+	dataDir := filepath.Join(homeDir, ".leifdb", hashString)
 	log.Println("Data dir: ", dataDir)
 	err := EnsureDirectory(dataDir)
 	if err != nil {

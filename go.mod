@@ -1,4 +1,4 @@
-module github.com/btmorr/go-raft
+module github.com/btmorr/leifdb
 
 go 1.14
 
