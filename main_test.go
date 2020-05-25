@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/btmorr/leifdb/internal/fileutils"
 	. "github.com/btmorr/leifdb/internal/types"
+	pb "github.com/btmorr/leifdb/internal/persistence"
+	"github.com/golang/protobuf/proto"
 )
 
 func CreateTestDir() (string, error) {
@@ -149,43 +152,6 @@ func TestPersistence(t *testing.T) {
 	if termData != testTerm {
 		t.Error("Term data file roundtrip failed")
 	}
-
-	// Logfile persistence
-	logs := []LogRecord{
-		{Term: 1, Record: "set test run"},
-		{Term: 2, Record: "set other questions"},
-		{Term: 3, Record: "set stuff there"}}
-
-	testLog := ""
-	for _, l := range logs {
-		logString := fmt.Sprintf("%d %s", l.Term, l.Record)
-		testLog = testLog + logString + "\n"
-	}
-	fileutils.Write(config.LogFile, testLog)
-
-	logData, e2 := fileutils.Read(config.LogFile)
-
-	if e2 != nil {
-		t.Error(e2)
-	}
-	if logData != testLog {
-		t.Error("Log data file roundtrip failed")
-	}
-
-	node, _ := NewNode(config)
-
-	if node.Term != 5 {
-		t.Error("Term not loaded correctly. Found term: ", node.Term)
-	}
-
-	for idx, l := range node.log {
-		if l != logs[idx] {
-			t.Error("Log mismatch:", l, logs[idx])
-		}
-	}
-	if len(node.log) != 3 {
-		t.Error("Incorrect number of logs loaded. Number found: ", len(node.log))
-	}
 }
 
 func TestAppend(t *testing.T) {
@@ -197,17 +163,31 @@ func TestAppend(t *testing.T) {
 	testTerm := "5 localhost:8181\n"
 	fileutils.Write(config.TermFile, testTerm)
 
-	logs := []LogRecord{
-		{Term: 1, Record: "set Harry present"},
-		{Term: 2, Record: "set Ron absent"},
-		{Term: 5, Record: "set Hermione present"}}
+	logs := pb.Log{
+		Records: []pb.LogRecord{
+			pb.LogRecord{
+				Term: 1, 
+				Action: pb.LogRecord_SET, 
+				Key: "Harry", 
+				Value: "present"},
+			pb.LogRecord{
+				Term: 2, 
+				Action: pb.LogRecord_SET, 
+				Key: "Ron", 
+				Value: "absent"},
+			pb.LogRecord{
+				Term: 5, 
+				Action: pb.LogRecord_SET, 
+				Key: "Hermione", 
+				Value: "present"}}}
 
-	testLog := ""
-	for _, l := range logs {
-		logString := fmt.Sprintf("%d %s", l.Term, l.Record)
-		testLog = testLog + logString + "\n"
+	out, err := proto.Marshal(&logs)
+	if err != nil {
+		log.Fatalln("Failed to encode logs:", err)
 	}
-	fileutils.Write(config.LogFile, testLog)
+	if err := ioutil.WriteFile(config.LogFile, out, 0644); err != nil {
+		log.Fatalln("Failed to write log file:", err)
+	}
 
 	node, _ := NewNode(config)
 	router := buildRouter(node)
@@ -221,7 +201,7 @@ func TestAppend(t *testing.T) {
 		LeaderId:     validLeaderId,
 		PrevLogIndex: 0,
 		PrevLogTerm:  0,
-		Entries:      make([]LogRecord, 0, 0),
+		Entries:      make([]pb.LogRecord, 0, 0),
 		LeaderCommit: 0}
 
 	b1, _ := json.Marshal(body1)
@@ -242,7 +222,7 @@ func TestAppend(t *testing.T) {
 		LeaderId:     invalidLeaderId,
 		PrevLogIndex: 2,
 		PrevLogTerm:  5,
-		Entries:      make([]LogRecord, 0, 0),
+		Entries:      make([]pb.LogRecord, 0, 0),
 		LeaderCommit: 2}
 
 	b2, _ := json.Marshal(body2)
@@ -263,7 +243,7 @@ func TestAppend(t *testing.T) {
 		LeaderId:     validLeaderId,
 		PrevLogIndex: 2,
 		PrevLogTerm:  5,
-		Entries:      make([]LogRecord, 0, 0),
+		Entries:      make([]pb.LogRecord, 0, 0),
 		LeaderCommit: 2}
 
 	b3, _ := json.Marshal(body3)
@@ -279,13 +259,18 @@ func TestAppend(t *testing.T) {
 
 	// --- Part 4 ---
 	// Construct a valid append request with entries
-	record := LogRecord{Term: node.Term, Record: "set Ginny adventuring"}
+	record := pb.LogRecord{
+		Term: node.Term, 
+		Action: pb.LogRecord_SET, 
+		Key: "Ginny", 
+		Value: "adventuring"}
+
 	body4 := AppendBody{
 		Term:         node.Term,
 		LeaderId:     validLeaderId,
 		PrevLogIndex: 0,
 		PrevLogTerm:  0,
-		Entries:      []LogRecord{record},
+		Entries:      []pb.LogRecord{record},
 		LeaderCommit: 0}
 
 	b4, _ := json.Marshal(body4)
@@ -299,9 +284,9 @@ func TestAppend(t *testing.T) {
 		t.Error("Append response status for valid request should be 200")
 	}
 
-	expectedLog := append(logs, record)
-	for idx, l := range node.log {
-		if l != expectedLog[idx] {
+	expectedLog := pb.Log{Records: append(logs.Records, record)}
+	for idx, l := range node.log.Records {
+		if l != expectedLog.Records[idx] {
 			t.Error("Log failed to update on valid append")
 		}
 	}

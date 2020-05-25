@@ -1,12 +1,6 @@
 package types
 
-// A LogRecord is a Raft log object, shipped to other servers to propagate writes
-// The Record field is a string representing a database op, like "set thisKey someValue"
-// or "del anotherKey"
-type LogRecord struct {
-	Term   int    `json:"term"`
-	Record string `json:"record"`
-}
+import pb "github.com/btmorr/leifdb/internal/persistence"
 
 // A Role is one of Leader, Candidate, or Follower
 type Role int
@@ -32,31 +26,31 @@ type DeleteBody struct {
 
 // A VoteBody is a request body template for the request-vote route
 type VoteBody struct {
-	Term         int    `json:"term"`
+	Term         int64    `json:"term"`
 	CandidateId  string `json:"candidateId"`
 	LastLogIndex int    `json:"lastLogIndex"`
-	LastLogTerm  int    `json:"lastLogTerm"`
+	LastLogTerm  int64    `json:"lastLogTerm"`
 }
 
 // A VoteResponse is a response body template for the request-vote route
 type VoteResponse struct {
-	Term        int  `json:"term"`
+	Term        int64  `json:"term"`
 	VoteGranted bool `json:"voteGranted"`
 }
 
 // An AppendBody is a request body template for the log-append route
 type AppendBody struct {
-	Term         int         `json:"term"`
+	Term         int64         `json:"term"`
 	LeaderId     string      `json:"leaderId"`
 	PrevLogIndex int         `json:"prevLogIndex"`
-	PrevLogTerm  int         `json:"prevLogTerm"`
-	Entries      []LogRecord `json:"entries"`
+	PrevLogTerm  int64         `json:"prevLogTerm"`
+	Entries      []pb.LogRecord `json:"entries"`
 	LeaderCommit int         `json:"leaderCommit"`
 }
 
 // An AppendResponse is a response body template for the log-append route
 type AppendResponse struct {
-	Term    int  `json:"term"`
+	Term    int64  `json:"term"`
 	Success bool `json:"success"`
 }
 

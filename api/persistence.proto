@@ -1,0 +1,22 @@
+syntax = "proto3";
+package persistence;
+
+option go_package = "github.com/btmorr/leifdb/internal/persistence";
+
+
+message LogRecord {
+	enum Action {
+		SET = 0;
+		DEL = 1;
+	}
+
+	int64 term = 1;
+	Action action = 2;
+	string key = 3;
+	string value = 4;
+
+}
+
+message Log {
+	repeated LogRecord records = 1;
+}

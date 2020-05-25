@@ -10,6 +10,8 @@ Contributions are welcome! Check out the [Contributing Guide] for more info on h
 
 ## Build and run
 
+This project requires Go 1.14.x, and protobuf. If you do not have these installed, see the instructions in the [Contributing Guide].
+
 The simplest way to build and test the application is to enter:
 
 ```

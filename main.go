@@ -22,7 +22,9 @@ import (
 
 	"github.com/btmorr/leifdb/internal/fileutils"
 	. "github.com/btmorr/leifdb/internal/types"
+	pb "github.com/btmorr/leifdb/internal/persistence"
 	"github.com/gin-gonic/gin"
+	"github.com/golang/protobuf/proto"
 )
 
 // NodeConfig contains configurable properties for a node
@@ -45,14 +47,14 @@ type Node struct {
 	appendTicker    *time.Ticker
 	State           Role
 	haltAppend      chan bool
-	Term            int
+	Term            int64
 	votedFor        string
 	otherNodes      map[string]bool
 	nextIndex       map[string]int
 	matchIndex      map[string]int
 	commitIndex     int
 	lastApplied     int
-	log             []LogRecord
+	log             pb.Log
 	config          NodeConfig
 }
 
@@ -64,24 +66,25 @@ type Node struct {
 // responding to the request.
 
 // SetTerm records term and vote in non-volatile state
-func (n *Node) SetTerm(newTerm int, votedFor string) error {
+func (n *Node) SetTerm(newTerm int64, votedFor string) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
 	vote := fmt.Sprintf("%d %s\n", newTerm, votedFor)
 	return fileutils.Write(n.config.TermFile, vote)
 }
 
-// SetLog records new log contents in non-volatile state
-func (n *Node) SetLog(newLog []LogRecord) error {
-	// todo: modify log index logic to use 1-origin numbering
-	n.log = newLog
-	logString := ""
-	for _, l := range newLog {
-		// persistence format: "term set key value" or "term del key"
-		record := fmt.Sprintf("%d %s\n", l.Term, l.Record)
-		logString = logString + record
+// SetLog records new log contents in non-volatile memory and updates state
+func (n *Node) SetLog(newLog pb.Log) error {
+	out, err := proto.Marshal(&newLog)
+	if err != nil {
+		log.Fatalln("Failed to encode logs:", err)
 	}
-	return fileutils.Write(n.config.LogFile, logString)
+	if err := ioutil.WriteFile(n.config.LogFile, out, 0644); err != nil {
+		log.Fatalln("Failed to write log file:", err)
+	}
+	// If marshal and write succeeds, update node state
+	n.log = newLog
+	return err
 }
 
 // Volatile state functions
@@ -117,7 +120,7 @@ func (n *Node) startAppendTicker() {
 }
 
 // requestVote sends a request for vote to a single other node (see `doElection`)
-func (n Node) requestVote(host string, term int) (bool, error) {
+func (n Node) requestVote(host string, term int64) (bool, error) {
 	uri := "http://" + host + "/vote"
 	log.Println("Requesting vote from ", host)
 
@@ -230,7 +233,7 @@ func NewNode(config NodeConfig) (*Node, error) {
 
 	appendTimeout := time.Duration(10) * time.Millisecond
 
-	var term int
+	var term int64
 	var votedFor string
 	_, err := os.Stat(config.TermFile)
 	if err != nil {
@@ -240,29 +243,23 @@ func NewNode(config NodeConfig) (*Node, error) {
 	} else {
 		raw, _ := fileutils.Read(config.TermFile)
 		dat := strings.Split(strings.TrimSpace(raw), " ")
-		term, _ = strconv.Atoi(dat[0])
+		term, _ = strconv.ParseInt(dat[0], 10, 64)
 		votedFor = dat[1]
 		log.Println("Term data found. Current term:", term)
 	}
 
-	var logs []LogRecord
-	_, err2 := os.Stat(config.LogFile)
+	logFile, err2 := ioutil.ReadFile(config.LogFile)
 	if err2 != nil {
-		logs = make([]LogRecord, 0, 0)
-	} else {
-		raw, _ := fileutils.Read(config.LogFile)
-		rows := strings.Split(raw, "\n")
-		for _, row := range rows {
-			dat := strings.SplitN(row, " ", 2)
-			if len(dat) == 2 {
-				logTerm, _ := strconv.Atoi(dat[0])
-				record := dat[1]
-				logRecord := LogRecord{
-					Term:   logTerm,
-					Record: record}
-				logs = append(logs, logRecord)
-			}
+		if os.IsNotExist(err) {
+			fmt.Println("Log file not found--starting new log file")
+		} else {
+			log.Fatalln("Error reading log file:", err)
 		}
+	}
+
+	logs := &pb.Log{}
+	if err3 := proto.Unmarshal(logFile, logs); err3 != nil {
+		log.Fatalln("Failed to unmarshal log file:", err)
 	}
 
 	n := Node{
@@ -281,7 +278,7 @@ func NewNode(config NodeConfig) (*Node, error) {
 		matchIndex:      make(map[string]int),
 		commitIndex:     0,
 		lastApplied:     0,
-		log:             logs,
+		log:             *logs,
 		config:          config}
 
 	go func() {
@@ -308,11 +305,13 @@ func (n *Node) handleWrite(c *gin.Context) {
 		return
 	}
 
-	record := fmt.Sprintf("%s %s %s", "set", data.Key, data.Value)
-	newLog := LogRecord{
+	newRecord := &pb.LogRecord{
 		Term:   n.Term,
-		Record: record}
-	err := n.SetLog(append(n.log, newLog))
+		Action: pb.LogRecord_SET,
+		Key: data.Key,
+		Value: data.Value}
+	newLog := pb.Log{Records: append(n.log.Records, newRecord)}
+	err := n.SetLog(newLog)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 	} else {
@@ -396,7 +395,7 @@ func (n *Node) handleVote(c *gin.Context) {
 }
 
 // validateAppend performs all checks for valid append request
-func (n *Node) validateAppend(term int, leaderId string) bool {
+func (n *Node) validateAppend(term int64, leaderId string) bool {
 	var success bool
 	success = true
 	// reply false if req term < current term
@@ -416,8 +415,8 @@ func (n *Node) validateAppend(term int, leaderId string) bool {
 // reconcileLogs deletes the existing entry and any that follow
 func (n *Node) reconcileLogs(body AppendBody) {
 	mismatchIdx := -1
-	if body.PrevLogIndex < len(n.log) {
-		overlappingEntries := n.log[body.PrevLogIndex:]
+	if body.PrevLogIndex < len(n.log.Records) {
+		overlappingEntries := n.log.Records[body.PrevLogIndex:]
 		for i, rec := range overlappingEntries {
 			if rec.Term != body.Entries[i].Term {
 				mismatchIdx = body.PrevLogIndex + i
@@ -426,25 +425,25 @@ func (n *Node) reconcileLogs(body AppendBody) {
 		}
 	}
 	if mismatchIdx >= 0 {
-		n.log = n.log[:mismatchIdx]
+		n.log.Records = n.log.Records[:mismatchIdx]
 	}
 	// append any entries not already in log
-	offset := len(n.log) - body.PrevLogIndex
-	n.log = append(n.log, body.Entries[offset:]...)
+	offset := len(n.log.Records) - body.PrevLogIndex
+	n.log = pb.Log{Records: append(n.log.Records, body.Entries[offset:]...)}
 	// update commit idx
 	if body.LeaderCommit > n.commitIndex {
-		if body.LeaderCommit < len(n.log) {
+		if body.LeaderCommit < len(n.log.Records) {
 			n.commitIndex = body.LeaderCommit
 		} else {
-			n.commitIndex = len(n.log)
+			n.commitIndex = len(n.log.Records)
 		}
 	}
 }
 
 // checkPrevious returns true if Node.logs contains an entry at the specified
 // index with the specified term, otherwise false
-func (n *Node) checkPrevious(prevIndex int, prevTerm int) bool {
-	return prevIndex < len(n.log) && n.log[prevIndex].Term == prevTerm
+func (n *Node) checkPrevious(prevIndex int, prevTerm int64) bool {
+	return prevIndex < len(n.log.Records) && n.log.Records[prevIndex].Term == prevTerm
 }
 
 // Handler for append-log messages from leader nodes
