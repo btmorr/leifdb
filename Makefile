@@ -3,7 +3,7 @@ test: app
 	go test
 
 app:
-	protoc -I=./api --go_out=. ./api/*.proto
+	protoc -I ./api --go_out=. ./api/*.proto
 	go clean
 	rm ./app || true
 	gofmt -w -s .
@@ -16,6 +16,7 @@ run: app
 
 .PHONY: protobuf
 protobuf:
-	protoc -I=./api --go_out=. ./api/*.proto
-	cp ./github.com/btmorr/leifdb/internal/persistence/* ./internal/persistence/
+	protoc -I=./api ./api/raft.proto --go_out=plugins=grpc:.
+	mkdir -p ./internal/raft
+	cp ./github.com/btmorr/leifdb/internal/raft/* ./internal/raft/
 	rm -rf ./github.com

@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package raft;
+
+option go_package = "github.com/btmorr/leifdb/internal/raft";
+
+service Raft {
+	rpc RequestVote (VoteRequest) returns (VoteReply) {}
+	rpc AppendLogs (AppendRequest) returns (AppendReply) {}
+}
+
+message VoteRequest {
+	int64 term = 1;
+	string candidateID = 2;
+	int64 lastLogIndex = 3;
+	int64 lastLogTerm = 4;
+}
+
+message VoteReply {
+	int64 term = 1;
+	bool voteGranted = 2;
+}
+
+message AppendRequest {
+	int64 term = 1;
+	string leaderID = 2;
+	int64 prevLogIndex = 3;
+	int64 leaderCommit = 4;
+	repeated LogRecord entries = 5;
+}
+
+message AppendReply {
+	int64 term = 1;
+	bool success = 2;
+}
+
+message LogRecord {
+	enum Action {
+		SET = 0;
+		DEL = 1;
+	}
+
+	int64 term = 1;
+	Action action = 2;
+	string key = 3;
+	string value = 4;
+
+}
