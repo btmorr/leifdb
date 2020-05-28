@@ -20,9 +20,15 @@ import (
 	"strings"
 	"time"
 
+	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/fileutils"
 	. "github.com/btmorr/leifdb/internal/types"
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	set    string = "set"
+	delete string = "delete"
 )
 
 // NodeConfig contains configurable properties for a node
@@ -54,6 +60,7 @@ type Node struct {
 	lastApplied     int
 	log             []LogRecord
 	config          NodeConfig
+	Store           *db.Database
 }
 
 // Client methods for managing raft state
@@ -222,7 +229,7 @@ func NewNodeConfig(dataDir string, addr string) NodeConfig {
 
 // NewNode initializes a Node with a randomized election timeout between
 // 150-300ms, and starts the election timer
-func NewNode(config NodeConfig) (*Node, error) {
+func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 	lowerBound := 150
 	upperBound := 300
 	ms := (rand.Int() % lowerBound) + (upperBound - lowerBound)
@@ -266,7 +273,6 @@ func NewNode(config NodeConfig) (*Node, error) {
 	}
 
 	n := Node{
-		Value:           make(map[string]string),
 		NodeId:          config.Id,
 		electionTimeout: electionTimeout,
 		electionTimer:   time.NewTimer(electionTimeout),
@@ -282,7 +288,8 @@ func NewNode(config NodeConfig) (*Node, error) {
 		commitIndex:     0,
 		lastApplied:     0,
 		log:             logs,
-		config:          config}
+		config:          config,
+		Store:           store}
 
 	go func() {
 		log.Println("First election timer")
@@ -291,44 +298,6 @@ func NewNode(config NodeConfig) (*Node, error) {
 	}()
 
 	return &n, nil
-}
-
-// Server methods for handling data read/write
-
-// Handler for POSTs to the data endpoint (client write)
-func (n *Node) handleWrite(c *gin.Context) {
-	// todo: revise to log-append / commit protocol once elections work
-	var data WriteBody
-	if err := c.ShouldBindJSON(&data); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if n.State != Leader {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Writes must be made to leader"})
-		return
-	}
-
-	record := fmt.Sprintf("%s %s %s", "set", data.Key, data.Value)
-	newLog := LogRecord{
-		Term:   n.Term,
-		Record: record}
-	err := n.SetLog(append(n.log, newLog))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-	} else {
-		c.JSON(http.StatusOK, gin.H{"value": n.Value})
-	}
-
-}
-
-// Handler for GETs to the data endpoint (client read)
-func (n *Node) handleRead(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"value": n.Value})
-}
-
-// Handler for DELETEs to the data endpoint (client delete)
-func (n *Node) handleDelete(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented"})
 }
 
 // When a Raft node is a follower or candidate and receives a message from a
@@ -497,15 +466,59 @@ func handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "Ok"})
 }
 
-func buildRouter(node *Node) *gin.Engine {
+// Data types for [un]marshalling JSON
+
+// A WriteBody is a request body template for write route
+type WriteBody struct {
+	Value string `json:"value"`
+}
+
+// buildRouter hooks endpoints for Node/Database ops
+func buildRouter(n *Node) *gin.Engine {
+	// Distilled structure of how this is hooking the database:
+	// https://play.golang.org/p/c_wk9rQdJx8
+	handleRead := func(c *gin.Context) {
+		key := c.Param("key")
+		fmt.Printf("handle get %s\n", key)
+		value := n.Store.Get(key)
+		fmt.Printf("got value: %s\n", value)
+
+		status := http.StatusOK
+		c.String(status, value)
+	}
+
+	handleWrite := func(c *gin.Context) {
+		key := c.Param("key")
+
+		var body WriteBody
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		// todo: replace this with log-append once commit logic is in place
+		n.Store.Set(key, body.Value)
+
+		status := http.StatusOK
+		c.String(status, "Ok")
+	}
+
+	handleDelete := func(c *gin.Context) {
+		key := c.Param("key")
+		// todo: replace this with log-append once commit logic is in place
+		n.Store.Delete(key)
+
+		status := http.StatusOK
+		c.String(status, "Ok")
+	}
+
 	router := gin.Default()
 
 	router.GET("/health", handleHealth)
-	router.POST("/vote", node.handleVote)
-	router.POST("/append", node.handleAppend)
-	router.GET("/", node.handleRead)
-	router.POST("/", node.handleWrite)
-	router.DELETE("/", node.handleDelete)
+	router.POST("/vote", n.handleVote)
+	router.POST("/append", n.handleAppend)
+	router.GET("/db/:key", handleRead)
+	router.POST("/db/:key", handleWrite)
+	router.DELETE("/db/:key", handleDelete)
 
 	return router
 }
@@ -568,15 +581,16 @@ func main() {
 		panic(err)
 	}
 
+	store := db.NewDatabase()
+
 	config := NewNodeConfig(dataDir, addr)
 
-	node, err := NewNode(config)
+	n, err := NewNode(config, store)
 	if err != nil {
-		log.Println("Failed to initialize node")
-		panic(err)
+		log.Fatal("Failed to initialize node with error:", err)
 	}
-	log.Println("Election timeout: ", node.electionTimeout.String())
+	log.Println("Election timeout: ", n.electionTimeout.String())
 
-	router := buildRouter(node)
+	router := buildRouter(n)
 	router.Run()
 }

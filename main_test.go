@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/fileutils"
 	. "github.com/btmorr/leifdb/internal/types"
+	"github.com/gin-gonic/gin"
 )
 
 func CreateTestDir() (string, error) {
@@ -26,15 +28,22 @@ func RemoveTestDir(path string) error {
 	return os.RemoveAll(path)
 }
 
-func TestHealthRoute(t *testing.T) {
+func setupServer() (*gin.Engine, *Node) {
 	addr := "localhost:8080"
 
 	testDir, _ := CreateTestDir()
 	defer RemoveTestDir(testDir)
 
+	store := db.NewDatabase()
+
 	config := NewNodeConfig(testDir, addr)
-	node, _ := NewNode(config)
+	node, _ := NewNode(config, store)
 	router := buildRouter(node)
+	return router, node
+}
+
+func TestHealthRoute(t *testing.T) {
+	router, _ := setupServer()
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/health", nil)
@@ -45,16 +54,97 @@ func TestHealthRoute(t *testing.T) {
 	}
 }
 
+func TestReadAfterWrite(t *testing.T) {
+	router, _ := setupServer()
+
+	v := "testy"
+	body1 := WriteBody{
+		Value: v}
+	b1, _ := json.Marshal(body1)
+	br1 := bytes.NewReader(b1)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/db/stuff", br1)
+	fmt.Println("------> POST")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Error("Non-200 health status in POST:", w.Code)
+	}
+
+	w2 := httptest.NewRecorder()
+	req2, _ := http.NewRequest("GET", "/db/stuff", nil)
+	router.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Error("Non-200 health status in GET:", w2.Code)
+	}
+
+	raw, _ := ioutil.ReadAll(w2.Body)
+	if string(raw) != v {
+		t.Error("Incorrect response:", string(raw))
+	}
+}
+
+func TestDelete(t *testing.T) {
+	router, _ := setupServer()
+
+	v := "testy"
+	body1 := WriteBody{
+		Value: v}
+	b1, _ := json.Marshal(body1)
+	br1 := bytes.NewReader(b1)
+
+	uri := "/db/stuff"
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", uri, br1)
+	fmt.Println("------> POST")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Error("Non-200 health status in POST:", w.Code)
+	}
+
+	w2 := httptest.NewRecorder()
+	req2, _ := http.NewRequest("GET", uri, nil)
+	router.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Error("Non-200 health status in GET:", w2.Code)
+	}
+
+	raw, _ := ioutil.ReadAll(w2.Body)
+	if string(raw) != v {
+		t.Error("Incorrect response:", string(raw))
+	}
+
+	w3 := httptest.NewRecorder()
+	req3, _ := http.NewRequest("DELETE", uri, nil)
+	router.ServeHTTP(w3, req3)
+
+	if w3.Code != http.StatusOK {
+		t.Error("Non-200 health status in DELETE:", w3.Code)
+	}
+
+	w4 := httptest.NewRecorder()
+	req4, _ := http.NewRequest("GET", uri, nil)
+	router.ServeHTTP(w4, req4)
+
+	if w4.Code != http.StatusOK {
+		t.Error("Non-200 health status in GET (for key not found):", w4.Code)
+	}
+
+	raw2, _ := ioutil.ReadAll(w2.Body)
+	if string(raw2) != "" {
+		t.Error("Incorrect response:", string(raw))
+	}
+}
+
+
+
 func TestVote(t *testing.T) {
-	addr := "localhost:8080"
-
-	// Node should come up and become the leader of a single-node cluster
-	testDir, _ := CreateTestDir()
-	defer RemoveTestDir(testDir)
-
-	config := NewNodeConfig(testDir, addr)
-	node, _ := NewNode(config)
-	router := buildRouter(node)
+	router, node := setupServer()
 
 	// --- Part 1 ---
 	// Construct a vote for the same term as the leader (which guarantees
@@ -172,7 +262,8 @@ func TestPersistence(t *testing.T) {
 		t.Error("Log data file roundtrip failed")
 	}
 
-	node, _ := NewNode(config)
+	store := db.NewDatabase()
+	node, _ := NewNode(config, store)
 
 	if node.Term != 5 {
 		t.Error("Term not loaded correctly. Found term: ", node.Term)
@@ -209,7 +300,8 @@ func TestAppend(t *testing.T) {
 	}
 	fileutils.Write(config.LogFile, testLog)
 
-	node, _ := NewNode(config)
+	store := db.NewDatabase()
+	node, _ := NewNode(config, store)
 	router := buildRouter(node)
 
 	validLeaderId := "localhost:8181"

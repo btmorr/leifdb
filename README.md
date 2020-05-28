@@ -4,7 +4,7 @@
 [![License][license-badge]][license]
 [![Build Status][build-badge]][build]
 
-This is an attempt to create a clustered K-V store application that implements [Raft] for consistency, in Go, based on the [short Raft paper]--something along the lines of [etcd], which backs [Kubernetes]; [Consul], which backs [Vault] and other HashiCorp tools; or [ZooKeeper], which backs most [Hadoop]-related projects. (etcd and Consul use Raft, ZooKeeper uses a similar algorithm called [Zab], and there are others that use other algorithms such as [Paxos])
+This is an attempt to create a clustered K-V store application that implements [Raft] for consistency, in Go, based on the [short Raft paper]--something along the lines of [etcd], which backs [Kubernetes]; [Consul], which backs [Vault] and other HashiCorp tools; or [ZooKeeper], which backs most Hadoop-related projects. (etcd and Consul use Raft, ZooKeeper uses a similar algorithm called [Zab], and there are others that use other algorithms such as [Paxos])
 
 Contributions are welcome! Check out the [Contributing Guide] for more info on how to make feature requests, subtmit bug reports, or create pull requests.
 
@@ -29,7 +29,7 @@ go clean
 go build -o app.exe
 ```
 
-All requests respond with `application/json`. All error bodies contain the "error" key with a readable message.
+Responses to client endpoints are string-formatted.
 
 To manually run the test suite:
 
@@ -61,22 +61,22 @@ Or on Windows:
 
 (Under construction...endpoints don't all consistently work yet)
 
-To create/update a value:
+To create/update a key-value pair (key `somekey`):
 
 ```
-curl -i -X POST localhost:8080/ -d '{"key": "someKey", "value": "test"}'
+curl -i -X POST localhost:8080/db/somekey -d '{"value": "test"}'
 ```
 
-To read the current value:
+To read the current value for a key `somekey`:
 
 ```
-curl -i -X GET localhost:8080/?key=someKey
+curl -i -X GET localhost:8080/db/somekey
 ```
 
-To remove/delete a key from the database:
+To remove/delete a key `somekey` from the database:
 
 ```
-curl -i -X DELETE localhost:8080/?key=someKey
+curl -i -X DELETE localhost:8080/db/somekey
 ```
 
 ### Raft requests
@@ -113,7 +113,6 @@ Raft basics (everything from the [short Raft paper]):
 - add log comparison check to vote handler (election restriction)
 - add more checking on most recently seen term
 - Add commit/applied logic
-- Separate db into own class, and expand capabilities beyond a single value
 
 Raft complete (additional functionality in the [full Raft paper]):
 - log compaction
@@ -121,7 +120,7 @@ Raft complete (additional functionality in the [full Raft paper]):
 
 General application:
 - Probably use protobuf for log storage on disk instead of strings (for easier marshalling/unmarshalling, but also to handle missing value fields at all)
-- Add configuration options (cli? config file?)
+- Add configuration options (probably use "flag")
 - Add scripts for starting a cluster / changing membership
 - OpenAPI compatibility for HTTP API?
 - Dashboard for visualization / management of a cluster?

@@ -17,19 +17,6 @@ const (
 	Leader
 )
 
-// Data types for [un]marshalling JSON
-
-// A WriteBody is a request body template for write route
-type WriteBody struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
-// A DeleteBody is a request body template for delete route
-type DeleteBody struct {
-	Key string `json:"key"`
-}
-
 // A VoteBody is a request body template for the request-vote route
 type VoteBody struct {
 	Term         int    `json:"term"`
