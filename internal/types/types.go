@@ -8,14 +8,6 @@ type LogRecord struct {
 	Record string `json:"record"`
 }
 
-// A Role is one of Leader, Candidate, or Follower
-type Role int
-
-const (
-	Follower Role = iota
-	Candidate
-	Leader
-)
 
 // A VoteBody is a request body template for the request-vote route
 type VoteBody struct {

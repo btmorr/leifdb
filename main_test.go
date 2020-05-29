@@ -13,6 +13,7 @@ import (
 
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/fileutils"
+	. "github.com/btmorr/leifdb/internal/node"
 	. "github.com/btmorr/leifdb/internal/types"
 	"github.com/gin-gonic/gin"
 )
@@ -269,13 +270,13 @@ func TestPersistence(t *testing.T) {
 		t.Error("Term not loaded correctly. Found term: ", node.Term)
 	}
 
-	for idx, l := range node.log {
+	for idx, l := range node.Log {
 		if l != logs[idx] {
 			t.Error("Log mismatch:", l, logs[idx])
 		}
 	}
-	if len(node.log) != 3 {
-		t.Error("Incorrect number of logs loaded. Number found: ", len(node.log))
+	if len(node.Log) != 3 {
+		t.Error("Incorrect number of logs loaded. Number found: ", len(node.Log))
 	}
 }
 
@@ -392,7 +393,7 @@ func TestAppend(t *testing.T) {
 	}
 
 	expectedLog := append(logs, record)
-	for idx, l := range node.log {
+	for idx, l := range node.Log {
 		if l != expectedLog[idx] {
 			t.Error("Log failed to update on valid append")
 		}
