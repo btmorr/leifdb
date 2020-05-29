@@ -16,9 +16,50 @@ import (
 
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/fileutils"
-	. "github.com/btmorr/leifdb/internal/types"
+	pb "github.com/btmorr/leifdb/internal/raft"
 	"github.com/gin-gonic/gin"
+	"github.com/golang/protobuf/proto"
 )
+
+// deprecated HTTP route types (replace with grpc messages in a successive PR)
+//   todo:
+//   - replace VoteBody with pb.VoteRequest
+//   - replace VoteResponse with pb.VoteReply
+//   - replace AppendBody with pb.AppendRequest
+//   - replace AppendResponse with pb.AppendReply
+//   - remove / abstract-away references to gin in this package
+
+// A VoteBody is a request body template for the request-vote route
+type VoteBody struct {
+	Term         int64  `json:"term"`
+	CandidateId  string `json:"candidateId"`
+	LastLogIndex int64  `json:"lastLogIndex"`
+	LastLogTerm  int64  `json:"lastLogTerm"`
+}
+
+// A VoteResponse is a response body template for the request-vote route
+type VoteResponse struct {
+	Term        int64 `json:"term"`
+	VoteGranted bool  `json:"voteGranted"`
+}
+
+// An AppendBody is a request body template for the log-append route
+type AppendBody struct {
+	Term         int64           `json:"term"`
+	LeaderId     string          `json:"leaderId"`
+	PrevLogIndex int64           `json:"prevLogIndex"`
+	PrevLogTerm  int64           `json:"prevLogTerm"`
+	Entries      []*pb.LogRecord `json:"entries"`
+	LeaderCommit int64           `json:"leaderCommit"`
+}
+
+// An AppendResponse is a response body template for the log-append route
+type AppendResponse struct {
+	Term    int64 `json:"term"`
+	Success bool  `json:"success"`
+}
+
+// end deprecated block
 
 // A Role is one of Leader, Candidate, or Follower
 type Role int
@@ -49,14 +90,14 @@ type Node struct {
 	appendTicker    *time.Ticker
 	State           Role
 	haltAppend      chan bool
-	Term            int
+	Term            int64
 	votedFor        string
 	otherNodes      map[string]bool
-	nextIndex       map[string]int
-	matchIndex      map[string]int
-	commitIndex     int
-	lastApplied     int
-	Log             []LogRecord
+	nextIndex       map[string]int64
+	matchIndex      map[string]int64
+	commitIndex     int64
+	lastApplied     int64
+	Log             *pb.LogStore
 	config          NodeConfig
 	Store           *db.Database
 }
@@ -69,24 +110,33 @@ type Node struct {
 // responding to the request.
 
 // SetTerm records term and vote in non-volatile state
-func (n *Node) SetTerm(newTerm int, votedFor string) error {
+func (n *Node) SetTerm(newTerm int64, votedFor string) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
 	vote := fmt.Sprintf("%d %s\n", newTerm, votedFor)
 	return fileutils.Write(n.config.TermFile, vote)
 }
 
-// SetLog records new log contents in non-volatile state
-func (n *Node) SetLog(newLog []LogRecord) error {
-	// todo: modify log index logic to use 1-origin numbering
-	n.Log = newLog
-	logString := ""
-	for _, l := range newLog {
-		// persistence format: "term set key value" or "term del key"
-		record := fmt.Sprintf("%d %s\n", l.Term, l.Record)
-		logString = logString + record
+func WriteLogs(filename string, logStore *pb.LogStore) error {
+	out, err := proto.Marshal(logStore)
+	if err != nil {
+		log.Fatalln("Failed to marshal logs:", err)
 	}
-	return fileutils.Write(n.config.LogFile, logString)
+	if err = ioutil.WriteFile(filename, out, 0644); err != nil {
+		log.Fatalln("Failed to write log file:", err)
+	}
+	return err
+}
+
+// SetLog records new log contents in non-volatile state
+func (n *Node) SetLog(newLog []*pb.LogRecord) error {
+	// todo: modify log index logic to use 1-origin numbering or handle shift
+	record := &pb.LogStore{Entries: newLog}
+	err := WriteLogs(n.config.LogFile, record)
+	if err == nil {
+		n.Log = record
+	}
+	return err
 }
 
 // Volatile state functions
@@ -122,7 +172,7 @@ func (n *Node) startAppendTicker() {
 }
 
 // requestVote sends a request for vote to a single other node (see `doElection`)
-func (n Node) requestVote(host string, term int) (bool, error) {
+func (n Node) requestVote(host string, term int64) (bool, error) {
 	uri := "http://" + host + "/vote"
 	log.Println("Requesting vote from ", host)
 
@@ -225,6 +275,21 @@ func NewNodeConfig(dataDir string, addr string) NodeConfig {
 		LogFile:  filepath.Join(dataDir, "raftlog")}
 }
 
+// ReadLogs attempts to unmarshal and return a LogStore from the specified
+// file, and if unable to do so returns an empty LogStore
+func ReadLogs(filename string) *pb.LogStore {
+	logStore := &pb.LogStore{Entries: make([]*pb.LogRecord, 0, 0)}
+	_, err := os.Stat(filename)
+	if err != nil {
+	} else {
+		logFile, _ := ioutil.ReadFile(filename)
+		if err = proto.Unmarshal(logFile, logStore); err != nil {
+			log.Println("Failed to unmarshal log file, creating empty log store:", err)
+		}
+	}
+	return logStore
+}
+
 // NewNode initializes a Node with a randomized election timeout between
 // 150-300ms, and starts the election timer
 func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
@@ -235,7 +300,7 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 
 	appendTimeout := time.Duration(10) * time.Millisecond
 
-	var term int
+	var term int64
 	var votedFor string
 	_, err := os.Stat(config.TermFile)
 	if err != nil {
@@ -245,30 +310,12 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 	} else {
 		raw, _ := fileutils.Read(config.TermFile)
 		dat := strings.Split(strings.TrimSpace(raw), " ")
-		term, _ = strconv.Atoi(dat[0])
+		term, _ = strconv.ParseInt(dat[0], 10, 64)
 		votedFor = dat[1]
 		log.Println("Term data found. Current term:", term)
 	}
 
-	var logs []LogRecord
-	_, err2 := os.Stat(config.LogFile)
-	if err2 != nil {
-		logs = make([]LogRecord, 0, 0)
-	} else {
-		raw, _ := fileutils.Read(config.LogFile)
-		rows := strings.Split(raw, "\n")
-		for _, row := range rows {
-			dat := strings.SplitN(row, " ", 2)
-			if len(dat) == 2 {
-				logTerm, _ := strconv.Atoi(dat[0])
-				record := dat[1]
-				logRecord := LogRecord{
-					Term:   logTerm,
-					Record: record}
-				logs = append(logs, logRecord)
-			}
-		}
-	}
+	logStore := ReadLogs(config.LogFile)
 
 	n := Node{
 		NodeId:          config.Id,
@@ -281,11 +328,11 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		Term:            term,
 		votedFor:        votedFor,
 		otherNodes:      make(map[string]bool),
-		nextIndex:       make(map[string]int),
-		matchIndex:      make(map[string]int),
+		nextIndex:       make(map[string]int64),
+		matchIndex:      make(map[string]int64),
 		commitIndex:     0,
 		lastApplied:     0,
-		Log:             logs,
+		Log:             logStore,
 		config:          config,
 		Store:           store}
 
@@ -320,8 +367,8 @@ func (n *Node) resetElectionTimer() {
 // addNodeToKnown updates the list of known other members of the raft cluster
 func (n *Node) addNodeToKnown(addr string) {
 	n.otherNodes[addr] = true
-	log.Println("Added ", addr, " to known nodes")
-	log.Println("Nodes: ", n.otherNodes)
+	log.Println("Added", addr, "to known nodes")
+	log.Println("Nodes:", n.otherNodes)
 }
 
 // HandleVote responds to vote requests from candidate nodes
@@ -340,11 +387,11 @@ func (n *Node) HandleVote(c *gin.Context) {
 	if body.Term <= n.Term {
 		// Increment term, vote for same node as previous term (is this correct?)
 		n.SetTerm(n.Term+1, n.votedFor)
-		log.Println("Expired term vote received. New term: ", n.Term)
+		log.Println("Expired term vote received. New term:", n.Term)
 		status = http.StatusConflict
 		vote = gin.H{"term": n.Term, "voteGranted": false}
 	} else {
-		log.Println("Voting for ", body.CandidateId, " for term ", body.Term)
+		log.Println("Voting for", body.CandidateId, "for term", body.Term)
 		n.SetTerm(body.Term, body.CandidateId)
 		if n.State == Leader {
 			n.haltAppend <- true
@@ -355,15 +402,14 @@ func (n *Node) HandleVote(c *gin.Context) {
 		// todo: check candidate's log details
 		status = http.StatusOK
 		vote = gin.H{"term": n.Term, "voteGranted": true}
-		log.Println("Returning vote: ", vote)
 	}
-	log.Println("Returning vote: [", status, " ]", vote)
+	// log.Println("Returning vote: [", status, " ]", vote)
 
 	c.JSON(status, vote)
 }
 
 // validateAppend performs all checks for valid append request
-func (n *Node) validateAppend(term int, leaderId string) bool {
+func (n *Node) validateAppend(term int64, leaderId string) bool {
 	var success bool
 	success = true
 	// reply false if req term < current term
@@ -372,8 +418,9 @@ func (n *Node) validateAppend(term int, leaderId string) bool {
 	}
 	if leaderId != n.votedFor {
 		byz_msg1 := "Append request from LeaderId mismatch for this term. "
-		byz_msg2 := "Possible byzantine actor: " + leaderId + " != " + n.votedFor
-		log.Println(byz_msg1 + byz_msg2)
+		byz_msg2 := "Possible byzantine actor: " + leaderId
+		byz_msg3 := " (voted for: " + n.votedFor + ")"
+		log.Println(byz_msg1 + byz_msg2 + byz_msg3)
 		success = false
 	}
 	return success
@@ -382,36 +429,44 @@ func (n *Node) validateAppend(term int, leaderId string) bool {
 // If an existing entry conflicts with a new one (same idx diff term),
 // reconcileLogs deletes the existing entry and any that follow
 func (n *Node) reconcileLogs(body AppendBody) {
-	mismatchIdx := -1
-	if body.PrevLogIndex < len(n.Log) {
-		overlappingEntries := n.Log[body.PrevLogIndex:]
+	// note: don't memoize length of Entries, it changes multiple times
+	// during this method--safer to recalculate, and memoizing would
+	// only save a maximum of one pass so it's not worth it
+	var mismatchIdx int64
+	mismatchIdx = -1
+	if body.PrevLogIndex < int64(len(n.Log.Entries)) {
+		overlappingEntries := n.Log.Entries[body.PrevLogIndex:]
 		for i, rec := range overlappingEntries {
 			if rec.Term != body.Entries[i].Term {
-				mismatchIdx = body.PrevLogIndex + i
+				mismatchIdx = body.PrevLogIndex + int64(i)
 				break
 			}
 		}
 	}
 	if mismatchIdx >= 0 {
-		n.Log = n.Log[:mismatchIdx]
+		log.Println("Mismatch index:", mismatchIdx, "- rewinding log")
+		n.Log.Entries = n.Log.Entries[:mismatchIdx]
 	}
 	// append any entries not already in log
-	offset := len(n.Log) - body.PrevLogIndex
-	n.Log = append(n.Log, body.Entries[offset:]...)
+	offset := int64(len(n.Log.Entries)) - body.PrevLogIndex - 1
+	newLogs := body.Entries[offset:]
+	log.Println("Appending", len(newLogs), "entries")
+	n.Log.Entries = append(n.Log.Entries, newLogs...)
 	// update commit idx
 	if body.LeaderCommit > n.commitIndex {
-		if body.LeaderCommit < len(n.Log) {
+		if body.LeaderCommit < int64(len(n.Log.Entries)) {
 			n.commitIndex = body.LeaderCommit
 		} else {
-			n.commitIndex = len(n.Log)
+			n.commitIndex = int64(len(n.Log.Entries))
 		}
+		log.Println("Commit index:", n.commitIndex)
 	}
 }
 
 // checkPrevious returns true if Node.logs contains an entry at the specified
 // index with the specified term, otherwise false
-func (n *Node) checkPrevious(prevIndex int, prevTerm int) bool {
-	return prevIndex < len(n.Log) && n.Log[prevIndex].Term == prevTerm
+func (n *Node) checkPrevious(prevIndex int64, prevTerm int64) bool {
+	return prevIndex < int64(len(n.Log.Entries)) && n.Log.Entries[prevIndex].Term == prevTerm
 }
 
 // HandleAppend responds to append-log messages from leader nodes
@@ -422,7 +477,6 @@ func (n *Node) HandleAppend(c *gin.Context) {
 		return
 	}
 
-	// if none of the failure conditions fired...
 	var status int
 	var success bool
 
@@ -445,6 +499,7 @@ func (n *Node) HandleAppend(c *gin.Context) {
 		status = http.StatusOK
 		success = true
 	}
+	// if none of the failure conditions fired...
 	if valid {
 		// For any valid append received during an election, cancel election
 		if n.State == Candidate {

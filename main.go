@@ -20,6 +20,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// A HealthResponse is a response body template for the health route [note: the
+//health endpoint takes a GET request, so there is no corresponding Body type]
+type HealthResponse struct {
+	Status string `json:"status"`
+}
+
 // Handler for the health endpoint--not required for Raft, but useful for infrastructure
 // monitoring, such as determining when a node is available in blue-green deploy
 func handleHealth(c *gin.Context) {
@@ -39,9 +45,7 @@ func buildRouter(n *Node) *gin.Engine {
 	// https://play.golang.org/p/c_wk9rQdJx8
 	handleRead := func(c *gin.Context) {
 		key := c.Param("key")
-		fmt.Printf("handle get %s\n", key)
 		value := n.Store.Get(key)
-		fmt.Printf("got value: %s\n", value)
 
 		status := http.StatusOK
 		c.String(status, value)
@@ -123,27 +127,37 @@ func EnsureDirectory(path string) error {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	// todo: determine port programatically
-	port := "8080"
-	addr := fmt.Sprintf("%s:%s", GetOutboundIP(), port)
-	log.Println("Address: " + addr)
+	// todo: make ports configurable
+	raftPort := "16990"
+	clientPort := "8080"
+	ip := GetOutboundIP()
+	raftAddr := fmt.Sprintf("%s:%s", ip, raftPort)
+	clientAddr := fmt.Sprintf("%s:%s", ip, clientPort)
+	log.Println("Cluster interface: " + raftAddr)
+	log.Println("Client interface:  " + clientAddr)
+
+	_, err := net.Listen("tcp", fmt.Sprintf(":"+raftPort))
+	if err != nil {
+		log.Fatal("Cluster interface failed to bind:", err)
+	}
+	// todo: stand up grpc server (using variable elided just above)
 
 	hash := fnv.New32()
-	hash.Write([]byte(addr))
+	hash.Write([]byte(raftAddr))
 	hashString := fmt.Sprintf("%x", hash.Sum(nil))
 
 	// todo: make this configurable
 	homeDir, _ := os.UserHomeDir()
 	dataDir := filepath.Join(homeDir, ".leifdb", hashString)
 	log.Println("Data dir: ", dataDir)
-	err := EnsureDirectory(dataDir)
-	if err != nil {
-		panic(err)
+	err2 := EnsureDirectory(dataDir)
+	if err2 != nil {
+		panic(err2)
 	}
 
 	store := db.NewDatabase()
 
-	config := NewNodeConfig(dataDir, addr)
+	config := NewNodeConfig(dataDir, raftAddr)
 
 	n, err := NewNode(config, store)
 	if err != nil {

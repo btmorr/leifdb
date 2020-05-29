@@ -3,8 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,8 +14,9 @@ import (
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/fileutils"
 	. "github.com/btmorr/leifdb/internal/node"
-	. "github.com/btmorr/leifdb/internal/types"
+	pb "github.com/btmorr/leifdb/internal/raft"
 	"github.com/gin-gonic/gin"
+	"github.com/golang/protobuf/proto"
 )
 
 func CreateTestDir() (string, error) {
@@ -66,7 +67,6 @@ func TestReadAfterWrite(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/db/stuff", br1)
-	fmt.Println("------> POST")
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -100,7 +100,6 @@ func TestDelete(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", uri, br1)
-	fmt.Println("------> POST")
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -141,8 +140,6 @@ func TestDelete(t *testing.T) {
 		t.Error("Incorrect response:", string(raw))
 	}
 }
-
-
 
 func TestVote(t *testing.T) {
 	router, node := setupServer()
@@ -207,8 +204,7 @@ func TestVote(t *testing.T) {
 	}
 
 	if !vote2.VoteGranted {
-		fmt.Println("Response: ", vote2)
-		t.Error("Vote should be granted for a new term")
+		t.Error("Vote should be granted for a new term. Got response:", vote2)
 	}
 
 	// --- Part 3 ---
@@ -218,6 +214,37 @@ func TestVote(t *testing.T) {
 	// known nodes do not respond (go into election cycling).
 	//
 	// Mock out Node.SetState to record transitions.
+
+}
+
+func CompareLogs(t *testing.T, got *pb.LogStore, expected *pb.LogStore) {
+	// Note: reflect.DeepEqual failed to return true for `LogRecord`s with
+	// identical contents, so have to do this instead... (DeepEqual probably
+	// can't reliably traverse objects with arrays of pointers to objects)
+
+	length1 := len(got.Entries)
+	length2 := len(expected.Entries)
+	if length1 != length2 {
+		t.Error("Expected", length1, "log entries roundtrip but got", length2)
+	} else {
+		for idx, entry := range got.Entries {
+			if entry.Term != expected.Entries[idx].Term {
+				t.Error(
+					"Expected term", expected.Entries[idx].Term,
+					"got", entry.Term)
+			}
+			if entry.Key != expected.Entries[idx].Key {
+				t.Error(
+					"Expected Key", expected.Entries[idx].Key,
+					"got", entry.Key)
+			}
+			if entry.Value != expected.Entries[idx].Value {
+				t.Error(
+					"Expected value", expected.Entries[idx].Value,
+					"got", entry.Value)
+			}
+		}
+	}
 
 }
 
@@ -241,27 +268,35 @@ func TestPersistence(t *testing.T) {
 		t.Error("Term data file roundtrip failed")
 	}
 
-	// Logfile persistence
-	logs := []LogRecord{
-		{Term: 1, Record: "set test run"},
-		{Term: 2, Record: "set other questions"},
-		{Term: 3, Record: "set stuff there"}}
+	logCache := &pb.LogStore{
+		Entries: []*pb.LogRecord{
+			{
+				Term:   1,
+				Action: pb.LogRecord_SET,
+				Key:    "test",
+				Value:  "run"},
+			{
+				Term:   2,
+				Action: pb.LogRecord_SET,
+				Key:    "other",
+				Value:  "questions"},
+			{
+				Term:   3,
+				Action: pb.LogRecord_SET,
+				Key:    "stuff",
+				Value:  "there"}}}
 
-	testLog := ""
-	for _, l := range logs {
-		logString := fmt.Sprintf("%d %s", l.Term, l.Record)
-		testLog = testLog + logString + "\n"
+	err := WriteLogs(config.LogFile, logCache)
+	if err != nil {
+		t.Error("Log write failure:", err)
 	}
-	fileutils.Write(config.LogFile, testLog)
+	_, err2 := os.Stat(config.LogFile)
+	if err2 != nil {
+		t.Error("LogFile does not exist after write:", err)
+	}
+	roundtrip := ReadLogs(config.LogFile)
 
-	logData, e2 := fileutils.Read(config.LogFile)
-
-	if e2 != nil {
-		t.Error(e2)
-	}
-	if logData != testLog {
-		t.Error("Log data file roundtrip failed")
-	}
+	CompareLogs(t, roundtrip, logCache)
 
 	store := db.NewDatabase()
 	node, _ := NewNode(config, store)
@@ -270,14 +305,7 @@ func TestPersistence(t *testing.T) {
 		t.Error("Term not loaded correctly. Found term: ", node.Term)
 	}
 
-	for idx, l := range node.Log {
-		if l != logs[idx] {
-			t.Error("Log mismatch:", l, logs[idx])
-		}
-	}
-	if len(node.Log) != 3 {
-		t.Error("Incorrect number of logs loaded. Number found: ", len(node.Log))
-	}
+	CompareLogs(t, node.Log, logCache)
 }
 
 func TestAppend(t *testing.T) {
@@ -289,17 +317,31 @@ func TestAppend(t *testing.T) {
 	testTerm := "5 localhost:8181\n"
 	fileutils.Write(config.TermFile, testTerm)
 
-	logs := []LogRecord{
-		{Term: 1, Record: "set Harry present"},
-		{Term: 2, Record: "set Ron absent"},
-		{Term: 5, Record: "set Hermione present"}}
+	logCache := &pb.LogStore{
+		Entries: []*pb.LogRecord{
+			{
+				Term:   1,
+				Action: pb.LogRecord_SET,
+				Key:    "Harry",
+				Value:  "present"},
+			{
+				Term:   2,
+				Action: pb.LogRecord_SET,
+				Key:    "Ron",
+				Value:  "absent"},
+			{
+				Term:   5,
+				Action: pb.LogRecord_SET,
+				Key:    "Hermione",
+				Value:  "present"}}}
 
-	testLog := ""
-	for _, l := range logs {
-		logString := fmt.Sprintf("%d %s", l.Term, l.Record)
-		testLog = testLog + logString + "\n"
+	out, err := proto.Marshal(logCache)
+	if err != nil {
+		log.Fatalln("Failed to encode logs:", err)
 	}
-	fileutils.Write(config.LogFile, testLog)
+	if err := ioutil.WriteFile(config.LogFile, out, 0644); err != nil {
+		log.Fatalln("Failed to write log file:", err)
+	}
 
 	store := db.NewDatabase()
 	node, _ := NewNode(config, store)
@@ -307,14 +349,17 @@ func TestAppend(t *testing.T) {
 
 	validLeaderId := "localhost:8181"
 	invalidLeaderId := "localhost:12345"
+	prevIdx := int64(len(logCache.Entries) - 1)
+	prevTerm := logCache.Entries[prevIdx].Term
+
 	// --- Part 1 ---
 	// Construct an empty append request for an expired term
-	body1 := AppendBody{
+	body1 := pb.AppendRequest{
 		Term:         node.Term - 1,
 		LeaderId:     validLeaderId,
 		PrevLogIndex: 0,
 		PrevLogTerm:  0,
-		Entries:      make([]LogRecord, 0, 0),
+		Entries:      make([]*pb.LogRecord, 0, 0),
 		LeaderCommit: 0}
 
 	b1, _ := json.Marshal(body1)
@@ -330,12 +375,12 @@ func TestAppend(t *testing.T) {
 
 	// --- Part 2 ---
 	// Construct an empty append request from an invalid leader
-	body2 := AppendBody{
+	body2 := pb.AppendRequest{
 		Term:         node.Term,
 		LeaderId:     invalidLeaderId,
-		PrevLogIndex: 2,
-		PrevLogTerm:  5,
-		Entries:      make([]LogRecord, 0, 0),
+		PrevLogIndex: prevIdx,
+		PrevLogTerm:  prevTerm,
+		Entries:      make([]*pb.LogRecord, 0, 0),
 		LeaderCommit: 2}
 
 	b2, _ := json.Marshal(body2)
@@ -351,13 +396,13 @@ func TestAppend(t *testing.T) {
 
 	// --- Part 3 ---
 	// Construct a valid append request
-	body3 := AppendBody{
+	body3 := pb.AppendRequest{
 		Term:         node.Term,
 		LeaderId:     validLeaderId,
-		PrevLogIndex: 2,
-		PrevLogTerm:  5,
-		Entries:      make([]LogRecord, 0, 0),
-		LeaderCommit: 2}
+		PrevLogIndex: prevIdx,
+		PrevLogTerm:  prevTerm,
+		Entries:      make([]*pb.LogRecord, 0, 0),
+		LeaderCommit: 0}
 
 	b3, _ := json.Marshal(body3)
 	br3 := bytes.NewReader(b3)
@@ -372,13 +417,18 @@ func TestAppend(t *testing.T) {
 
 	// --- Part 4 ---
 	// Construct a valid append request with entries
-	record := LogRecord{Term: node.Term, Record: "set Ginny adventuring"}
-	body4 := AppendBody{
+	record := &pb.LogRecord{
+		Term:   node.Term,
+		Action: pb.LogRecord_SET,
+		Key:    "Ginny",
+		Value:  "adventuring"}
+
+	body4 := pb.AppendRequest{
 		Term:         node.Term,
 		LeaderId:     validLeaderId,
-		PrevLogIndex: 0,
-		PrevLogTerm:  0,
-		Entries:      []LogRecord{record},
+		PrevLogIndex: prevIdx,
+		PrevLogTerm:  prevTerm,
+		Entries:      []*pb.LogRecord{record},
 		LeaderCommit: 0}
 
 	b4, _ := json.Marshal(body4)
@@ -392,10 +442,10 @@ func TestAppend(t *testing.T) {
 		t.Error("Append response status for valid request should be 200")
 	}
 
-	expectedLog := append(logs, record)
-	for idx, l := range node.Log {
-		if l != expectedLog[idx] {
-			t.Error("Log failed to update on valid append")
-		}
-	}
+	expectedLog := &pb.LogStore{Entries: append(logCache.Entries, record)}
+
+	CompareLogs(t, node.Log, expectedLog)
+
+	// --- Part 5 ---
+	// todo: construct valid append request that drops some uncommitted entries
 }

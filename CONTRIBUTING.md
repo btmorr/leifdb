@@ -30,6 +30,14 @@ Finally, remember to add yourself to the [contributors section below](#contribut
 
 Go v1.14 is the only strict requirement for this project. You can find instructions on getting and installing Go [here](https://golang.org/dl/).
 
+If you want to change something in a probobuf definition, you'll also need protoc and the protoc-gen-go plugin.
+
+To install protoc, download the package for your OS [here](https://github.com/protocolbuffers/protobuf/releases/), unzip it, and move the protoc binary from the resulting "bin" directory into $GOPATH/bin. Then run this command to install the plugin to generate Go code from a .proto file:
+
+```
+go install google.golang.org/protobuf/cmd/protoc-gen-go
+```
+
 Additionally this repo includes a Makefile with tasks for common workflows. Your OS may already have [make](https://www.gnu.org/software/make/) installed (you can check on a Linux/Unix system using `which make` or on Windows using `Get-Command make` in PowerShell). If you don't have it installed, you can get it via a package manager (ex: `yum` for Centos, `apt` for Debian/Ubuntu, [`brew`](https://brew.sh) for MacOS, or [Chocolatey](https://chocolatey.org) for Windows). 
 
 Especially on Windows, there are many ways of installing make (such as with [Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/about), getting a binary from the [GNU Make for Windows](http://gnuwin32.sourceforge.net/packages/make.htm) page, etc.--I'm not going to cover them all here, but you can use what works best for you.
