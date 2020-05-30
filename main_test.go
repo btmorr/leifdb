@@ -461,5 +461,75 @@ func TestAppend(t *testing.T) {
 	CompareLogs(t, node.Log, expectedLog)
 
 	// --- Part 5 ---
-	// todo: construct valid append request that drops some uncommitted entries
+	// construct  append request that commits some logs (the commit index is
+	// 1-origin, so a LeaderCommit of 2 will commit the first 2 records)
+	body5 := pb.AppendRequest{
+		Term:         node.Term,
+		LeaderId:     validLeaderId,
+		PrevLogIndex: prevIdx,
+		PrevLogTerm:  prevTerm,
+		Entries:      []*pb.LogRecord{},
+		LeaderCommit: 2}
+
+	b5, _ := json.Marshal(body5)
+	br5 := bytes.NewReader(b5)
+
+	w5 := httptest.NewRecorder()
+	req5, _ := http.NewRequest("POST", "/append", br5)
+	router.ServeHTTP(w5, req5)
+
+	if w5.Code != http.StatusOK {
+		t.Error("Append response status for valid request should be 200")
+	}
+	if store.Get("Harry") != "present" {
+		t.Error("Expected Harry to be present")
+	}
+	if store.Get("Ron") != "absent" {
+		t.Error("Expected Ron to be absent")
+	}
+	if store.Get("Hermione") != "" {
+		t.Error("Did not expect a status for Hermione yet")
+	}
+	if store.Get("Ginny") != "" {
+		t.Error("Did not expect a status for Ginny yet")
+	}
+
+	// --- Part 6 ---
+	// todo: construct append request that drops some uncommitted entries
+
+	// --- Part 7 ---
+	// construct append request that commits all logs
+	body7 := pb.AppendRequest{
+		Term:         node.Term,
+		LeaderId:     validLeaderId,
+		PrevLogIndex: prevIdx,
+		PrevLogTerm:  prevTerm,
+		Entries:      []*pb.LogRecord{},
+		LeaderCommit: int64(len(logCache.Entries) + 1)}
+
+	b7, _ := json.Marshal(body7)
+	br7 := bytes.NewReader(b7)
+
+	w7 := httptest.NewRecorder()
+	req7, _ := http.NewRequest("POST", "/append", br7)
+	router.ServeHTTP(w7, req7)
+
+	if w7.Code != http.StatusOK {
+		t.Error("Append response status for valid request should be 200")
+	}
+	if store.Get("Harry") != "present" {
+		t.Error("Expected Harry to be present")
+	}
+	if store.Get("Ron") != "absent" {
+		t.Error("Expected Ron to be absent")
+	}
+	if store.Get("Hermione") != "present" {
+		t.Error("Expected Hermione to be present")
+	}
+	if store.Get("Ginny") != "adventuring" {
+		t.Error("Expected Ginny to be adventuring")
+	}
+
+	// --- Part 8 ---
+	// todo: construct append request including a delete action
 }

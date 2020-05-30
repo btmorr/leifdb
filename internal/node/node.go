@@ -58,11 +58,11 @@ type AppendResponse struct {
 
 // end deprecated block
 
-// A Role is one of Leader, Candidate, or Follower
-type Role int
+type role int
 
+// A role is one of Leader, Candidate, or Follower
 const (
-	Follower  Role = iota // A Follower is a read-only member of a cluster
+	Follower  role = iota // A Follower is a read-only member of a cluster
 	Candidate             // A Candidate solicits votes to become a Leader
 	Leader                // A Leader is a read/write member of a cluster
 )
@@ -85,7 +85,7 @@ type Node struct {
 	electionTimer   *time.Timer
 	appendTimeout   time.Duration
 	appendTicker    *time.Ticker
-	State           Role
+	State           role
 	haltAppend      chan bool
 	Term            int64
 	votedFor        string
@@ -178,7 +178,6 @@ func ReadLogs(filename string) *pb.LogStore {
 
 // SetLog records new log contents in non-volatile state
 func (n *Node) SetLog(newLog []*pb.LogRecord) error {
-	// todo: modify log index logic to use 1-origin numbering or handle shift
 	record := &pb.LogStore{Entries: newLog}
 	err := WriteLogs(n.config.LogFile, record)
 	if err == nil {
@@ -191,10 +190,10 @@ func (n *Node) SetLog(newLog []*pb.LogRecord) error {
 // Other state should not be written to disk, and should be re-initialized on
 // restart, but may have other side-effects that happen on state change
 
-// SetState designates the Node as one of the roles in the Role enumeration,
+// SetState designates the Node as one of the roles in the role enumeration,
 // and handles any side-effects that should happen specifically on state
 // transition
-func (n *Node) SetState(newState Role) {
+func (n *Node) SetState(newState role) {
 	n.State = newState
 	// todo: move starting/stopping election timer and append ticker here
 }
@@ -334,7 +333,9 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 	appendTimeout := time.Duration(10) * time.Millisecond
 
 	termRecord := ReadTerm(config.TermFile)
+	log.Println("Current term:", termRecord.Term, "- Voted for:", termRecord.VotedFor)
 	logStore := ReadLogs(config.LogFile)
+	log.Println("Loaded", len(logStore.Entries), "logs")
 
 	n := Node{
 		NodeId:          config.Id,
@@ -471,14 +472,28 @@ func (n *Node) reconcileLogs(body AppendBody) {
 	newLogs := body.Entries[offset:]
 	log.Println("Appending", len(newLogs), "entries")
 	n.Log.Entries = append(n.Log.Entries, newLogs...)
-	// update commit idx
-	if body.LeaderCommit > n.commitIndex {
-		if body.LeaderCommit < int64(len(n.Log.Entries)) {
-			n.commitIndex = body.LeaderCommit
-		} else {
-			n.commitIndex = int64(len(n.Log.Entries))
+}
+
+func (n *Node) applyCommittedLogs(commitIdx int64) {
+	log.Println("Current commit:", n.commitIndex, "- Leader commit:", commitIdx)
+	if commitIdx > n.commitIndex {
+		// apply all entries up to new commit index to store
+		for i := n.commitIndex; i < commitIdx; i++ {
+			action := n.Log.Entries[i].Action
+			key := n.Log.Entries[i].Key
+			if action == pb.LogRecord_SET {
+				value := n.Log.Entries[i].Value
+				n.Store.Set(key, value)
+			} else if action == pb.LogRecord_DEL {
+				n.Store.Delete(key)
+			}
 		}
-		log.Println("Commit index:", n.commitIndex)
+		lastIndex := int64(len(n.Log.Entries))
+		if commitIdx > lastIndex {
+			commitIdx = lastIndex
+		}
+		n.commitIndex = commitIdx
+		log.Println("New commit:", n.commitIndex)
 	}
 }
 
@@ -514,17 +529,16 @@ func (n *Node) HandleAppend(c *gin.Context) {
 		if len(body.Entries) > 0 {
 			n.reconcileLogs(body)
 		}
+		n.applyCommittedLogs(body.LeaderCommit)
 
 		status = http.StatusOK
 		success = true
 	}
-	// if none of the failure conditions fired...
 	if valid {
 		// For any valid append received during an election, cancel election
-		if n.State == Candidate {
+		if n.State != Follower {
 			n.SetState(Follower)
 		}
-
 		// only reset the election timer on append from a valid leader
 		n.resetElectionTimer()
 	}
