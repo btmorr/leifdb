@@ -50,3 +50,8 @@ message LogRecord {
 message LogStore {
 	repeated LogRecord entries = 1;
 }
+
+message TermRecord {
+	int64 term = 1;
+	string votedFor = 2;
+}

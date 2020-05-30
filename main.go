@@ -16,7 +16,7 @@ import (
 	"time"
 
 	db "github.com/btmorr/leifdb/internal/database"
-	. "github.com/btmorr/leifdb/internal/node"
+	"github.com/btmorr/leifdb/internal/node"
 	"github.com/gin-gonic/gin"
 )
 
@@ -40,7 +40,7 @@ type WriteBody struct {
 }
 
 // buildRouter hooks endpoints for Node/Database ops
-func buildRouter(n *Node) *gin.Engine {
+func buildRouter(n *node.Node) *gin.Engine {
 	// Distilled structure of how this is hooking the database:
 	// https://play.golang.org/p/c_wk9rQdJx8
 	handleRead := func(c *gin.Context) {
@@ -157,9 +157,9 @@ func main() {
 
 	store := db.NewDatabase()
 
-	config := NewNodeConfig(dataDir, raftAddr)
+	config := node.NewNodeConfig(dataDir, raftAddr)
 
-	n, err := NewNode(config, store)
+	n, err := node.NewNode(config, store)
 	if err != nil {
 		log.Fatal("Failed to initialize node with error:", err)
 	}

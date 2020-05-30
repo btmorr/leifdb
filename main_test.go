@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	db "github.com/btmorr/leifdb/internal/database"
-	"github.com/btmorr/leifdb/internal/fileutils"
 	. "github.com/btmorr/leifdb/internal/node"
 	pb "github.com/btmorr/leifdb/internal/raft"
 	"github.com/gin-gonic/gin"
@@ -30,11 +29,16 @@ func RemoveTestDir(path string) error {
 	return os.RemoveAll(path)
 }
 
-func setupServer() (*gin.Engine, *Node) {
+func setupServer(t *testing.T) (*gin.Engine, *Node) {
 	addr := "localhost:8080"
 
-	testDir, _ := CreateTestDir()
-	defer RemoveTestDir(testDir)
+	testDir, err := CreateTestDir()
+	if err != nil {
+		log.Fatalln("Error creating test dir:", err)
+	}
+	t.Cleanup(func() {
+		RemoveTestDir(testDir)
+	})
 
 	store := db.NewDatabase()
 
@@ -45,7 +49,8 @@ func setupServer() (*gin.Engine, *Node) {
 }
 
 func TestHealthRoute(t *testing.T) {
-	router, _ := setupServer()
+	log.Println("~~~ TestHealthRoute")
+	router, _ := setupServer(t)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/health", nil)
@@ -57,7 +62,8 @@ func TestHealthRoute(t *testing.T) {
 }
 
 func TestReadAfterWrite(t *testing.T) {
-	router, _ := setupServer()
+	log.Println("~~~ TestReadAfterWrite")
+	router, _ := setupServer(t)
 
 	v := "testy"
 	body1 := WriteBody{
@@ -88,7 +94,8 @@ func TestReadAfterWrite(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	router, _ := setupServer()
+	log.Println("~~~ TestDelete")
+	router, _ := setupServer(t)
 
 	v := "testy"
 	body1 := WriteBody{
@@ -142,7 +149,8 @@ func TestDelete(t *testing.T) {
 }
 
 func TestVote(t *testing.T) {
-	router, node := setupServer()
+	log.Println("~~~ TestVote")
+	router, node := setupServer(t)
 
 	// --- Part 1 ---
 	// Construct a vote for the same term as the leader (which guarantees
@@ -249,23 +257,25 @@ func CompareLogs(t *testing.T, got *pb.LogStore, expected *pb.LogStore) {
 }
 
 func TestPersistence(t *testing.T) {
+	log.Println("~~~ TestPersistence")
 	addr := "localhost:8080"
 
 	testDir, _ := CreateTestDir()
-	defer RemoveTestDir(testDir)
+	t.Cleanup(func() {
+		RemoveTestDir(testDir)
+	})
 
 	config := NewNodeConfig(testDir, addr)
 
-	// Termfile persistence
-	testTerm := "5 localhost:8181\n"
-	fileutils.Write(config.TermFile, testTerm)
+	termRecord := &pb.TermRecord{Term: 5, VotedFor: "localhost:8181"}
+	WriteTerm(config.TermFile, termRecord)
 
-	termData, e1 := fileutils.Read(config.TermFile)
-	if e1 != nil {
-		t.Error(e1)
+	termData := ReadTerm(config.TermFile)
+	if termData.Term != termRecord.Term {
+		t.Error("Term data file roundtrip incorrect term:", termData.Term)
 	}
-	if termData != testTerm {
-		t.Error("Term data file roundtrip failed")
+	if termData.VotedFor != termRecord.VotedFor {
+		t.Error("Term data file roundtrip incorrect vote:", termData.VotedFor)
 	}
 
 	logCache := &pb.LogStore{
@@ -309,13 +319,17 @@ func TestPersistence(t *testing.T) {
 }
 
 func TestAppend(t *testing.T) {
+	log.Println("~~~ TestAppend")
 	addr := "localhost:8080"
 	testDir, _ := CreateTestDir()
-	defer RemoveTestDir(testDir)
+	t.Cleanup(func() {
+		RemoveTestDir(testDir)
+	})
+
 	config := NewNodeConfig(testDir, addr)
 
-	testTerm := "5 localhost:8181\n"
-	fileutils.Write(config.TermFile, testTerm)
+	termRecord := &pb.TermRecord{Term: 5, VotedFor: "localhost:8181"}
+	WriteTerm(config.TermFile, termRecord)
 
 	logCache := &pb.LogStore{
 		Entries: []*pb.LogRecord{
