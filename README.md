@@ -99,10 +99,10 @@ Currently, the return code of this endpoint is the main indicator of health (200
 
 Raft basics (everything from the [short Raft paper]):
 - leader index volatile state
-- leader keep track of log index for each other node, send append-logs requests to each based on last known log index
+- leader keep track of log index for each other node, send append-logs requests to each based on last known log index, and update commit index for logs appended to a majority of nodes
 - add log comparison check to vote handler (election restriction)
 - add more checking on most recently seen term
-- Add commit/applied logic
+- modify append request job to keep track of logs on other nodes and update commit
 
 Raft complete (additional functionality in the [full Raft paper]):
 - log compaction
