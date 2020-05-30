@@ -83,19 +83,7 @@ curl -i -X DELETE localhost:8080/db/somekey
 
 ### Raft requests
 
-For more info on creating valid values for fields, see the [short Raft paper].
-
-To request a vote (when becoming a candidate / starting an election):
-
-```
-curl -i -X POST localhost:8080/vote -d '{"term": 1, "candidateId": "localhost:12345", "lastLogIndex": 0, "lastLogTerm": 0}'
-```
-
-To send an append-logs message (when acting as leader):
-
-```
-curl -i -X POST localhost:8080/append -d '{"term": 1, "leaderId": "localhost:12345", "prevLogIndex": 0, "prevLogTerm": 0, "entries": [{"term": 1, "value": "test"}], leaderCommit: 0}'
-```
+Messages used for managing Raft state use protobuf. See test cases for examples of how to construct message bodies. For more info on creating valid values for fields, see the [short Raft paper].
 
 ### Other requests
 
@@ -121,7 +109,6 @@ Raft complete (additional functionality in the [full Raft paper]):
 - modifications
 
 General application:
-- Probably use protobuf for log storage on disk instead of strings (for easier marshalling/unmarshalling, but also to handle missing value fields at all)
 - Add configuration options (probably use "flag")
 - Add scripts for starting a cluster / changing membership
 - OpenAPI compatibility for HTTP API?
