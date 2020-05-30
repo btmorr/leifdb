@@ -10,12 +10,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	db "github.com/btmorr/leifdb/internal/database"
-	"github.com/btmorr/leifdb/internal/fileutils"
 	pb "github.com/btmorr/leifdb/internal/raft"
 	"github.com/gin-gonic/gin"
 	"github.com/golang/protobuf/proto"
@@ -65,9 +62,9 @@ type AppendResponse struct {
 type Role int
 
 const (
-	Follower Role = iota
-	Candidate
-	Leader
+	Follower  Role = iota // A Follower is a read-only member of a cluster
+	Candidate             // A Candidate solicits votes to become a Leader
+	Leader                // A Leader is a read/write member of a cluster
 )
 
 // NodeConfig contains configurable properties for a node
@@ -109,14 +106,50 @@ type Node struct {
 // any request that changes these values must be written to disk before
 // responding to the request.
 
+// WriteTerm persists the node's most recent term and vote
+func WriteTerm(filename string, termRecord *pb.TermRecord) error {
+	out, err := proto.Marshal(termRecord)
+	if err != nil {
+		log.Fatalln("Failed to marshal term record:", err)
+		return err
+	}
+	_, err = os.Stat(filepath.Dir(filename))
+	if err != nil {
+		log.Fatalln("Failed stat:", err)
+		return err
+	}
+	if err = ioutil.WriteFile(filename, out, 0644); err != nil {
+		log.Fatalln("Failed to write term file:", err)
+	}
+	return err
+}
+
+// ReadTerm attempts to unmarshal and return a TermRecord from the specified
+// file, and if unable to do so returns an initialized TermRecord
+func ReadTerm(filename string) *pb.TermRecord {
+	record := &pb.TermRecord{Term: 0, VotedFor: ""}
+	_, err := os.Stat(filename)
+	if err != nil {
+	} else {
+		termFile, _ := ioutil.ReadFile(filename)
+		if err = proto.Unmarshal(termFile, record); err != nil {
+			log.Println("Failed to unmarshal term file:", err)
+		}
+	}
+	return record
+}
+
 // SetTerm records term and vote in non-volatile state
 func (n *Node) SetTerm(newTerm int64, votedFor string) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
-	vote := fmt.Sprintf("%d %s\n", newTerm, votedFor)
-	return fileutils.Write(n.config.TermFile, vote)
+	vote := &pb.TermRecord{
+		Term:     n.Term,
+		VotedFor: n.votedFor}
+	return WriteTerm(n.config.TermFile, vote)
 }
 
+// WriteLogs persists the node's log
 func WriteLogs(filename string, logStore *pb.LogStore) error {
 	out, err := proto.Marshal(logStore)
 	if err != nil {
@@ -126,6 +159,21 @@ func WriteLogs(filename string, logStore *pb.LogStore) error {
 		log.Fatalln("Failed to write log file:", err)
 	}
 	return err
+}
+
+// ReadLogs attempts to unmarshal and return a LogStore from the specified
+// file, and if unable to do so returns an empty LogStore
+func ReadLogs(filename string) *pb.LogStore {
+	logStore := &pb.LogStore{Entries: make([]*pb.LogRecord, 0, 0)}
+	_, err := os.Stat(filename)
+	if err != nil {
+	} else {
+		logFile, _ := ioutil.ReadFile(filename)
+		if err = proto.Unmarshal(logFile, logStore); err != nil {
+			log.Println("Failed to unmarshal log file, creating empty log store:", err)
+		}
+	}
+	return logStore
 }
 
 // SetLog records new log contents in non-volatile state
@@ -275,21 +323,6 @@ func NewNodeConfig(dataDir string, addr string) NodeConfig {
 		LogFile:  filepath.Join(dataDir, "raftlog")}
 }
 
-// ReadLogs attempts to unmarshal and return a LogStore from the specified
-// file, and if unable to do so returns an empty LogStore
-func ReadLogs(filename string) *pb.LogStore {
-	logStore := &pb.LogStore{Entries: make([]*pb.LogRecord, 0, 0)}
-	_, err := os.Stat(filename)
-	if err != nil {
-	} else {
-		logFile, _ := ioutil.ReadFile(filename)
-		if err = proto.Unmarshal(logFile, logStore); err != nil {
-			log.Println("Failed to unmarshal log file, creating empty log store:", err)
-		}
-	}
-	return logStore
-}
-
 // NewNode initializes a Node with a randomized election timeout between
 // 150-300ms, and starts the election timer
 func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
@@ -300,21 +333,7 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 
 	appendTimeout := time.Duration(10) * time.Millisecond
 
-	var term int64
-	var votedFor string
-	_, err := os.Stat(config.TermFile)
-	if err != nil {
-		term = 0
-		votedFor = ""
-		log.Println("No term data found, starting at term 0")
-	} else {
-		raw, _ := fileutils.Read(config.TermFile)
-		dat := strings.Split(strings.TrimSpace(raw), " ")
-		term, _ = strconv.ParseInt(dat[0], 10, 64)
-		votedFor = dat[1]
-		log.Println("Term data found. Current term:", term)
-	}
-
+	termRecord := ReadTerm(config.TermFile)
 	logStore := ReadLogs(config.LogFile)
 
 	n := Node{
@@ -325,8 +344,8 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		appendTicker:    time.NewTicker(appendTimeout),
 		State:           Follower,
 		haltAppend:      make(chan bool),
-		Term:            term,
-		votedFor:        votedFor,
+		Term:            termRecord.Term,
+		votedFor:        termRecord.VotedFor,
 		otherNodes:      make(map[string]bool),
 		nextIndex:       make(map[string]int64),
 		matchIndex:      make(map[string]int64),
@@ -386,8 +405,8 @@ func (n *Node) HandleVote(c *gin.Context) {
 	var vote gin.H
 	if body.Term <= n.Term {
 		// Increment term, vote for same node as previous term (is this correct?)
-		n.SetTerm(n.Term+1, n.votedFor)
 		log.Println("Expired term vote received. New term:", n.Term)
+		n.SetTerm(n.Term+1, n.votedFor)
 		status = http.StatusConflict
 		vote = gin.H{"term": n.Term, "voteGranted": false}
 	} else {
