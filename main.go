@@ -109,8 +109,26 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	var dataDir = *flag.String("data", "", "Path to directory for data storage")
-	var raftPort = flag.Int("raftport", 16990, "Port number for Raft gRPC service interface")
-	var clientPort = flag.Int("httpport", 8080, "Port number for database HTTP service interface")
+	var raftPort = *flag.Int("raftport", 16990, "Port number for Raft gRPC service interface")
+	var clientPort = *flag.Int("httpport", 8080, "Port number for database HTTP service interface")
+	flag.Parse()
+
+	raftPortString := fmt.Sprintf(":%d", raftPort)
+	clientPortString := fmt.Sprintf(":%d", clientPort)
+	ip := GetOutboundIP()
+	raftAddr := fmt.Sprintf("%s%s", ip, raftPortString)
+	clientAddr := fmt.Sprintf("%s%s", ip, clientPortString)
+	log.Println("Cluster interface: " + raftAddr)
+	log.Println("Client interface:  " + clientAddr)
+
+	if dataDir == "" {
+		hash := fnv.New32()
+		hash.Write([]byte(raftAddr))
+		hashString := fmt.Sprintf("%x", hash.Sum(nil))
+
+		homeDir, _ := os.UserHomeDir()
+		dataDir = filepath.Join(homeDir, ".leifdb", hashString)
+	}
 
 	// Applicaiton defaults to single-node operation. To configure, copy
 	// "config/default_config.toml" to "<data directory>/config.toml"
@@ -141,23 +159,6 @@ func main() {
 		} else {
 			fmt.Println("Single-node configuration")
 		}
-	}
-
-	raftPortString := fmt.Sprintf(":%d", raftPort)
-	clientPortString := fmt.Sprintf(":%d", clientPort)
-	ip := GetOutboundIP()
-	raftAddr := fmt.Sprintf("%s%s", ip, raftPortString)
-	clientAddr := fmt.Sprintf("%s%s", ip, clientPortString)
-	log.Println("Cluster interface: " + raftAddr)
-	log.Println("Client interface:  " + clientAddr)
-
-	if dataDir == "" {
-		hash := fnv.New32()
-		hash.Write([]byte(raftAddr))
-		hashString := fmt.Sprintf("%x", hash.Sum(nil))
-
-		homeDir, _ := os.UserHomeDir()
-		dataDir = filepath.Join(homeDir, ".leifdb", hashString)
 	}
 
 	log.Println("Data dir: ", dataDir)
