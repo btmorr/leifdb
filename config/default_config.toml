@@ -1,0 +1,34 @@
+# Default configuration for a 3-node cluster
+
+# The "configuration" section is required, and must contain a "mode" field with
+# values "single" or "multi"
+
+# For single-node deployments, the configuration section should contain fields
+# "address" with a string value and a "ports" subsection containing "client"
+# and "raft" fields with integer values. These will be combined with the
+# address to form the
+
+# For multi-node deployments, the "members" field is required, and must contain
+# an array of strings. All members of the cluster must receive the same
+# configuration file, and each member must find an entry here for itself
+# Each item in this list must have a corresponding subsection with "address"
+# and "port" fields. No valid defaults/fallbacks exist.
+
+[configuration]
+mode = "multi"
+members = ["server1", "server2", "server3"]
+
+[server1]
+address = "localhost"
+
+[server1.ports]
+client = 8080
+raft = 16990
+
+[server2]
+address = "localhost"
+port = 16991
+
+[server3]
+address = "localhost"
+port = 16992
