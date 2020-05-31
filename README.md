@@ -106,7 +106,7 @@ Raft basics (everything from the [short Raft paper]):
 
 Raft complete (additional functionality in the [full Raft paper]):
 - log compaction
-- modifications
+- changes in cluster membership
 
 General application:
 - Add configuration options (probably use "flag")

@@ -1,3 +1,5 @@
+// Unit tests on non-rpc functionality
+
 package main
 
 import (
@@ -8,36 +10,24 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 
 	db "github.com/btmorr/leifdb/internal/database"
 	. "github.com/btmorr/leifdb/internal/node"
-	pb "github.com/btmorr/leifdb/internal/raft"
+	"github.com/btmorr/leifdb/internal/raft"
+	"github.com/btmorr/leifdb/internal/util"
 	"github.com/gin-gonic/gin"
-	"github.com/golang/protobuf/proto"
 )
-
-func CreateTestDir() (string, error) {
-	tmpDir := os.TempDir()
-	dataDir := filepath.Join(tmpDir, ".tmp-leifdb")
-	err := EnsureDirectory(dataDir)
-	return dataDir, err
-}
-
-func RemoveTestDir(path string) error {
-	return os.RemoveAll(path)
-}
 
 func setupServer(t *testing.T) (*gin.Engine, *Node) {
 	addr := "localhost:8080"
 
-	testDir, err := CreateTestDir()
+	testDir, err := util.CreateTmpDir(".tmp-leifdb")
 	if err != nil {
 		log.Fatalln("Error creating test dir:", err)
 	}
 	t.Cleanup(func() {
-		RemoveTestDir(testDir)
+		util.RemoveTmpDir(testDir)
 	})
 
 	store := db.NewDatabase()
@@ -150,12 +140,13 @@ func TestDelete(t *testing.T) {
 
 func TestVote(t *testing.T) {
 	log.Println("~~~ TestVote")
+	t.Skip()
 	router, node := setupServer(t)
 
 	// --- Part 1 ---
 	// Construct a vote for the same term as the leader (which guarantees
 	// the term will be expired) from a hypothetical 2nd node
-	body1 := VoteBody{
+	body1 := raft.VoteRequest{
 		Term:         node.Term,
 		CandidateId:  "localhost:12345",
 		LastLogIndex: 0,
@@ -176,7 +167,7 @@ func TestVote(t *testing.T) {
 
 	raw1, _ := ioutil.ReadAll(w1.Body)
 
-	var vote1 VoteResponse
+	var vote1 raft.VoteReply
 	json.Unmarshal(raw1, &vote1)
 
 	if vote1.VoteGranted {
@@ -186,7 +177,7 @@ func TestVote(t *testing.T) {
 
 	// --- Part 2 ---
 	// Construct a vote for a later term, from a hypothetical 3rd node
-	body2 := VoteBody{
+	body2 := raft.VoteRequest{
 		Term:         node.Term + 1,
 		CandidateId:  "localhost:12346",
 		LastLogIndex: 0,
@@ -205,7 +196,7 @@ func TestVote(t *testing.T) {
 
 	raw2, _ := ioutil.ReadAll(w2.Body)
 
-	var vote2 VoteResponse
+	var vote2 raft.VoteReply
 	err := json.Unmarshal(raw2, &vote2)
 	if err != nil {
 		t.Error("Unmarshalling error")
@@ -225,7 +216,7 @@ func TestVote(t *testing.T) {
 
 }
 
-func CompareLogs(t *testing.T, got *pb.LogStore, expected *pb.LogStore) {
+func CompareLogs(t *testing.T, got *raft.LogStore, expected *raft.LogStore) {
 	// Note: reflect.DeepEqual failed to return true for `LogRecord`s with
 	// identical contents, so have to do this instead... (DeepEqual probably
 	// can't reliably traverse objects with arrays of pointers to objects)
@@ -260,14 +251,14 @@ func TestPersistence(t *testing.T) {
 	log.Println("~~~ TestPersistence")
 	addr := "localhost:8080"
 
-	testDir, _ := CreateTestDir()
+	testDir, _ := util.CreateTmpDir(".tmp-leifdb")
 	t.Cleanup(func() {
-		RemoveTestDir(testDir)
+		util.RemoveTmpDir(testDir)
 	})
 
 	config := NewNodeConfig(testDir, addr)
 
-	termRecord := &pb.TermRecord{Term: 5, VotedFor: "localhost:8181"}
+	termRecord := &raft.TermRecord{Term: 5, VotedFor: "localhost:8181"}
 	WriteTerm(config.TermFile, termRecord)
 
 	termData := ReadTerm(config.TermFile)
@@ -278,21 +269,21 @@ func TestPersistence(t *testing.T) {
 		t.Error("Term data file roundtrip incorrect vote:", termData.VotedFor)
 	}
 
-	logCache := &pb.LogStore{
-		Entries: []*pb.LogRecord{
+	logCache := &raft.LogStore{
+		Entries: []*raft.LogRecord{
 			{
 				Term:   1,
-				Action: pb.LogRecord_SET,
+				Action: raft.LogRecord_SET,
 				Key:    "test",
 				Value:  "run"},
 			{
 				Term:   2,
-				Action: pb.LogRecord_SET,
+				Action: raft.LogRecord_SET,
 				Key:    "other",
 				Value:  "questions"},
 			{
 				Term:   3,
-				Action: pb.LogRecord_SET,
+				Action: raft.LogRecord_SET,
 				Key:    "stuff",
 				Value:  "there"}}}
 
@@ -316,220 +307,4 @@ func TestPersistence(t *testing.T) {
 	}
 
 	CompareLogs(t, node.Log, logCache)
-}
-
-func TestAppend(t *testing.T) {
-	log.Println("~~~ TestAppend")
-	addr := "localhost:8080"
-	testDir, _ := CreateTestDir()
-	t.Cleanup(func() {
-		RemoveTestDir(testDir)
-	})
-
-	config := NewNodeConfig(testDir, addr)
-
-	termRecord := &pb.TermRecord{Term: 5, VotedFor: "localhost:8181"}
-	WriteTerm(config.TermFile, termRecord)
-
-	logCache := &pb.LogStore{
-		Entries: []*pb.LogRecord{
-			{
-				Term:   1,
-				Action: pb.LogRecord_SET,
-				Key:    "Harry",
-				Value:  "present"},
-			{
-				Term:   2,
-				Action: pb.LogRecord_SET,
-				Key:    "Ron",
-				Value:  "absent"},
-			{
-				Term:   5,
-				Action: pb.LogRecord_SET,
-				Key:    "Hermione",
-				Value:  "present"}}}
-
-	out, err := proto.Marshal(logCache)
-	if err != nil {
-		log.Fatalln("Failed to encode logs:", err)
-	}
-	if err := ioutil.WriteFile(config.LogFile, out, 0644); err != nil {
-		log.Fatalln("Failed to write log file:", err)
-	}
-
-	store := db.NewDatabase()
-	node, _ := NewNode(config, store)
-	router := buildRouter(node)
-
-	validLeaderId := "localhost:8181"
-	invalidLeaderId := "localhost:12345"
-	prevIdx := int64(len(logCache.Entries) - 1)
-	prevTerm := logCache.Entries[prevIdx].Term
-
-	// --- Part 1 ---
-	// Construct an empty append request for an expired term
-	body1 := pb.AppendRequest{
-		Term:         node.Term - 1,
-		LeaderId:     validLeaderId,
-		PrevLogIndex: 0,
-		PrevLogTerm:  0,
-		Entries:      make([]*pb.LogRecord, 0, 0),
-		LeaderCommit: 0}
-
-	b1, _ := json.Marshal(body1)
-	br1 := bytes.NewReader(b1)
-
-	w1 := httptest.NewRecorder()
-	req1, _ := http.NewRequest("POST", "/append", br1)
-	router.ServeHTTP(w1, req1)
-
-	if w1.Code != http.StatusConflict {
-		t.Error("Append response status for expired term should be 409")
-	}
-
-	// --- Part 2 ---
-	// Construct an empty append request from an invalid leader
-	body2 := pb.AppendRequest{
-		Term:         node.Term,
-		LeaderId:     invalidLeaderId,
-		PrevLogIndex: prevIdx,
-		PrevLogTerm:  prevTerm,
-		Entries:      make([]*pb.LogRecord, 0, 0),
-		LeaderCommit: 2}
-
-	b2, _ := json.Marshal(body2)
-	br2 := bytes.NewReader(b2)
-
-	w2 := httptest.NewRecorder()
-	req2, _ := http.NewRequest("POST", "/append", br2)
-	router.ServeHTTP(w2, req2)
-
-	if w2.Code != http.StatusConflict {
-		t.Error("Append response status for invalid leader should be 409")
-	}
-
-	// --- Part 3 ---
-	// Construct a valid append request
-	body3 := pb.AppendRequest{
-		Term:         node.Term,
-		LeaderId:     validLeaderId,
-		PrevLogIndex: prevIdx,
-		PrevLogTerm:  prevTerm,
-		Entries:      make([]*pb.LogRecord, 0, 0),
-		LeaderCommit: 0}
-
-	b3, _ := json.Marshal(body3)
-	br3 := bytes.NewReader(b3)
-
-	w3 := httptest.NewRecorder()
-	req3, _ := http.NewRequest("POST", "/append", br3)
-	router.ServeHTTP(w3, req3)
-
-	if w3.Code != http.StatusOK {
-		t.Error("Append response status for valid request should be 200")
-	}
-
-	// --- Part 4 ---
-	// Construct a valid append request with entries
-	record := &pb.LogRecord{
-		Term:   node.Term,
-		Action: pb.LogRecord_SET,
-		Key:    "Ginny",
-		Value:  "adventuring"}
-
-	body4 := pb.AppendRequest{
-		Term:         node.Term,
-		LeaderId:     validLeaderId,
-		PrevLogIndex: prevIdx,
-		PrevLogTerm:  prevTerm,
-		Entries:      []*pb.LogRecord{record},
-		LeaderCommit: 0}
-
-	b4, _ := json.Marshal(body4)
-	br4 := bytes.NewReader(b4)
-
-	w4 := httptest.NewRecorder()
-	req4, _ := http.NewRequest("POST", "/append", br4)
-	router.ServeHTTP(w4, req4)
-
-	if w4.Code != http.StatusOK {
-		t.Error("Append response status for valid request should be 200")
-	}
-
-	expectedLog := &pb.LogStore{Entries: append(logCache.Entries, record)}
-
-	CompareLogs(t, node.Log, expectedLog)
-
-	// --- Part 5 ---
-	// construct  append request that commits some logs (the commit index is
-	// 1-origin, so a LeaderCommit of 2 will commit the first 2 records)
-	body5 := pb.AppendRequest{
-		Term:         node.Term,
-		LeaderId:     validLeaderId,
-		PrevLogIndex: prevIdx,
-		PrevLogTerm:  prevTerm,
-		Entries:      []*pb.LogRecord{},
-		LeaderCommit: 2}
-
-	b5, _ := json.Marshal(body5)
-	br5 := bytes.NewReader(b5)
-
-	w5 := httptest.NewRecorder()
-	req5, _ := http.NewRequest("POST", "/append", br5)
-	router.ServeHTTP(w5, req5)
-
-	if w5.Code != http.StatusOK {
-		t.Error("Append response status for valid request should be 200")
-	}
-	if store.Get("Harry") != "present" {
-		t.Error("Expected Harry to be present")
-	}
-	if store.Get("Ron") != "absent" {
-		t.Error("Expected Ron to be absent")
-	}
-	if store.Get("Hermione") != "" {
-		t.Error("Did not expect a status for Hermione yet")
-	}
-	if store.Get("Ginny") != "" {
-		t.Error("Did not expect a status for Ginny yet")
-	}
-
-	// --- Part 6 ---
-	// todo: construct append request that drops some uncommitted entries
-
-	// --- Part 7 ---
-	// construct append request that commits all logs
-	body7 := pb.AppendRequest{
-		Term:         node.Term,
-		LeaderId:     validLeaderId,
-		PrevLogIndex: prevIdx,
-		PrevLogTerm:  prevTerm,
-		Entries:      []*pb.LogRecord{},
-		LeaderCommit: int64(len(logCache.Entries) + 1)}
-
-	b7, _ := json.Marshal(body7)
-	br7 := bytes.NewReader(b7)
-
-	w7 := httptest.NewRecorder()
-	req7, _ := http.NewRequest("POST", "/append", br7)
-	router.ServeHTTP(w7, req7)
-
-	if w7.Code != http.StatusOK {
-		t.Error("Append response status for valid request should be 200")
-	}
-	if store.Get("Harry") != "present" {
-		t.Error("Expected Harry to be present")
-	}
-	if store.Get("Ron") != "absent" {
-		t.Error("Expected Ron to be absent")
-	}
-	if store.Get("Hermione") != "present" {
-		t.Error("Expected Hermione to be present")
-	}
-	if store.Get("Ginny") != "adventuring" {
-		t.Error("Expected Ginny to be adventuring")
-	}
-
-	// --- Part 8 ---
-	// todo: construct append request including a delete action
 }

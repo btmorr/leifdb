@@ -1,62 +1,40 @@
 package node
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
 	db "github.com/btmorr/leifdb/internal/database"
-	pb "github.com/btmorr/leifdb/internal/raft"
-	"github.com/gin-gonic/gin"
+	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/golang/protobuf/proto"
+	"google.golang.org/grpc"
 )
 
-// deprecated HTTP route types (replace with grpc messages in a successive PR)
-//   todo:
-//   - replace VoteBody with pb.VoteRequest
-//   - replace VoteResponse with pb.VoteReply
-//   - replace AppendBody with pb.AppendRequest
-//   - replace AppendResponse with pb.AppendReply
-//   - remove / abstract-away references to gin in this package
-
-// A VoteBody is a request body template for the request-vote route
-type VoteBody struct {
-	Term         int64  `json:"term"`
-	CandidateId  string `json:"candidateId"`
-	LastLogIndex int64  `json:"lastLogIndex"`
-	LastLogTerm  int64  `json:"lastLogTerm"`
+type ForeignNode struct {
+	Connection *grpc.ClientConn
+	Client     raft.RaftClient
 }
 
-// A VoteResponse is a response body template for the request-vote route
-type VoteResponse struct {
-	Term        int64 `json:"term"`
-	VoteGranted bool  `json:"voteGranted"`
+func NewForeignNode(address string) (*ForeignNode, error) {
+	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
+	if err != nil {
+		log.Println("Failed to connect to", address, "-", err)
+		return nil, err
+	}
+	client := raft.NewRaftClient(conn)
+
+	return &ForeignNode{Connection: conn, Client: client}, err
 }
 
-// An AppendBody is a request body template for the log-append route
-type AppendBody struct {
-	Term         int64           `json:"term"`
-	LeaderId     string          `json:"leaderId"`
-	PrevLogIndex int64           `json:"prevLogIndex"`
-	PrevLogTerm  int64           `json:"prevLogTerm"`
-	Entries      []*pb.LogRecord `json:"entries"`
-	LeaderCommit int64           `json:"leaderCommit"`
+func (f *ForeignNode) Close() {
+	f.Connection.Close()
 }
-
-// An AppendResponse is a response body template for the log-append route
-type AppendResponse struct {
-	Term    int64 `json:"term"`
-	Success bool  `json:"success"`
-}
-
-// end deprecated block
 
 type role int
 
@@ -89,12 +67,12 @@ type Node struct {
 	haltAppend      chan bool
 	Term            int64
 	votedFor        string
-	otherNodes      map[string]bool
+	otherNodes      map[string]*ForeignNode
 	nextIndex       map[string]int64
 	matchIndex      map[string]int64
 	commitIndex     int64
 	lastApplied     int64
-	Log             *pb.LogStore
+	Log             *raft.LogStore
 	config          NodeConfig
 	Store           *db.Database
 }
@@ -107,7 +85,7 @@ type Node struct {
 // responding to the request.
 
 // WriteTerm persists the node's most recent term and vote
-func WriteTerm(filename string, termRecord *pb.TermRecord) error {
+func WriteTerm(filename string, termRecord *raft.TermRecord) error {
 	out, err := proto.Marshal(termRecord)
 	if err != nil {
 		log.Fatalln("Failed to marshal term record:", err)
@@ -126,8 +104,8 @@ func WriteTerm(filename string, termRecord *pb.TermRecord) error {
 
 // ReadTerm attempts to unmarshal and return a TermRecord from the specified
 // file, and if unable to do so returns an initialized TermRecord
-func ReadTerm(filename string) *pb.TermRecord {
-	record := &pb.TermRecord{Term: 0, VotedFor: ""}
+func ReadTerm(filename string) *raft.TermRecord {
+	record := &raft.TermRecord{Term: 0, VotedFor: ""}
 	_, err := os.Stat(filename)
 	if err != nil {
 	} else {
@@ -143,14 +121,14 @@ func ReadTerm(filename string) *pb.TermRecord {
 func (n *Node) SetTerm(newTerm int64, votedFor string) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
-	vote := &pb.TermRecord{
+	vote := &raft.TermRecord{
 		Term:     n.Term,
 		VotedFor: n.votedFor}
 	return WriteTerm(n.config.TermFile, vote)
 }
 
 // WriteLogs persists the node's log
-func WriteLogs(filename string, logStore *pb.LogStore) error {
+func WriteLogs(filename string, logStore *raft.LogStore) error {
 	out, err := proto.Marshal(logStore)
 	if err != nil {
 		log.Fatalln("Failed to marshal logs:", err)
@@ -163,8 +141,8 @@ func WriteLogs(filename string, logStore *pb.LogStore) error {
 
 // ReadLogs attempts to unmarshal and return a LogStore from the specified
 // file, and if unable to do so returns an empty LogStore
-func ReadLogs(filename string) *pb.LogStore {
-	logStore := &pb.LogStore{Entries: make([]*pb.LogRecord, 0, 0)}
+func ReadLogs(filename string) *raft.LogStore {
+	logStore := &raft.LogStore{Entries: make([]*raft.LogRecord, 0, 0)}
 	_, err := os.Stat(filename)
 	if err != nil {
 	} else {
@@ -177,8 +155,8 @@ func ReadLogs(filename string) *pb.LogStore {
 }
 
 // SetLog records new log contents in non-volatile state
-func (n *Node) SetLog(newLog []*pb.LogRecord) error {
-	record := &pb.LogStore{Entries: newLog}
+func (n *Node) SetLog(newLog []*raft.LogRecord) error {
+	record := &raft.LogStore{Entries: newLog}
 	err := WriteLogs(n.config.LogFile, record)
 	if err == nil {
 		n.Log = record
@@ -219,39 +197,22 @@ func (n *Node) startAppendTicker() {
 }
 
 // requestVote sends a request for vote to a single other node (see `doElection`)
-func (n Node) requestVote(host string, term int64) (bool, error) {
-	uri := "http://" + host + "/vote"
-	log.Println("Requesting vote from ", host)
+func (n *Node) requestVote(host string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 
-	body := VoteBody{
-		Term:         term,
+	voteRequest := &raft.VoteRequest{
+		Term:         n.Term,
 		CandidateId:  n.NodeId,
 		LastLogIndex: 0,
 		LastLogTerm:  0}
 
-	b, err0 := json.Marshal(body)
-	if err0 != nil {
-		return false, err0
-	}
-	br := bytes.NewReader(b)
-
-	resp, err1 := http.Post(uri, "application/json", br)
-	if err1 != nil {
-		return false, err1
+	vote, err := n.otherNodes[host].Client.RequestVote(ctx, voteRequest)
+	if err != nil {
+		log.Printf("Error requesting vote from %s: %v", host, err)
 	}
 
-	raw, err2 := ioutil.ReadAll(resp.Body)
-	if err2 != nil {
-		return false, err2
-	}
-
-	var vote VoteResponse
-	err3 := json.Unmarshal(raw, &vote)
-	if err3 != nil {
-		return false, err3
-	}
-
-	return vote.VoteGranted, err3
+	return vote.VoteGranted, err
 }
 
 // doElection sends out requests for votes to each other node in the Raft cluster.
@@ -279,7 +240,7 @@ func (n *Node) doElection() {
 	n.resetElectionTimer()
 	numVotes := 1
 	for k := range n.otherNodes {
-		_, err := n.requestVote(k, n.Term)
+		_, err := n.requestVote(k)
 		log.Println("got a vote")
 		if err == nil {
 			log.Println("it's a 'yay'")
@@ -347,7 +308,7 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		haltAppend:      make(chan bool),
 		Term:            termRecord.Term,
 		votedFor:        termRecord.VotedFor,
-		otherNodes:      make(map[string]bool),
+		otherNodes:      make(map[string]*ForeignNode),
 		nextIndex:       make(map[string]int64),
 		matchIndex:      make(map[string]int64),
 		commitIndex:     0,
@@ -357,7 +318,7 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		Store:           store}
 
 	go func() {
-		log.Println("First election timer")
+		// log.Println("First election timer")
 		<-n.electionTimer.C
 		n.doElection()
 	}()
@@ -384,35 +345,28 @@ func (n *Node) resetElectionTimer() {
 	}()
 }
 
-// addNodeToKnown updates the list of known other members of the raft cluster
-func (n *Node) addNodeToKnown(addr string) {
-	n.otherNodes[addr] = true
+// AddForeignNode updates the list of known other members of the raft cluster
+func (n *Node) AddForeignNode(addr string) {
+	n.otherNodes[addr], _ = NewForeignNode(addr)
 	log.Println("Added", addr, "to known nodes")
 	log.Println("Nodes:", n.otherNodes)
 }
 
 // HandleVote responds to vote requests from candidate nodes
-func (n *Node) HandleVote(c *gin.Context) {
-	var body VoteBody
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	n.addNodeToKnown(body.CandidateId)
-
-	log.Println(body.CandidateId, " proposed term: ", body.Term)
-	var status int
-	var vote gin.H
-	if body.Term <= n.Term {
+func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
+	log.Println(req.CandidateId, " proposed term: ", req.Term)
+	var vote bool
+	if req.Term <= n.Term {
 		// Increment term, vote for same node as previous term (is this correct?)
 		log.Println("Expired term vote received. New term:", n.Term)
 		n.SetTerm(n.Term+1, n.votedFor)
-		status = http.StatusConflict
-		vote = gin.H{"term": n.Term, "voteGranted": false}
+		vote = false
+	} else if _, ok := n.otherNodes[req.CandidateId]; !ok {
+		log.Println("Unknown foreign node:", req.CandidateId)
+		vote = false
 	} else {
-		log.Println("Voting for", body.CandidateId, "for term", body.Term)
-		n.SetTerm(body.Term, body.CandidateId)
+		log.Println("Voting for", req.CandidateId, "for term", req.Term)
+		n.SetTerm(req.Term, req.CandidateId)
 		if n.State == Leader {
 			n.haltAppend <- true
 		}
@@ -420,12 +374,10 @@ func (n *Node) HandleVote(c *gin.Context) {
 		n.resetElectionTimer()
 
 		// todo: check candidate's log details
-		status = http.StatusOK
-		vote = gin.H{"term": n.Term, "voteGranted": true}
+		vote = true
 	}
 	// log.Println("Returning vote: [", status, " ]", vote)
-
-	c.JSON(status, vote)
+	return &raft.VoteReply{Term: n.Term, VoteGranted: vote}
 }
 
 // validateAppend performs all checks for valid append request
@@ -448,7 +400,7 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 
 // If an existing entry conflicts with a new one (same idx diff term),
 // reconcileLogs deletes the existing entry and any that follow
-func (n *Node) reconcileLogs(body AppendBody) {
+func (n *Node) reconcileLogs(body *raft.AppendRequest) {
 	// note: don't memoize length of Entries, it changes multiple times
 	// during this method--safer to recalculate, and memoizing would
 	// only save a maximum of one pass so it's not worth it
@@ -481,10 +433,10 @@ func (n *Node) applyCommittedLogs(commitIdx int64) {
 		for i := n.commitIndex; i < commitIdx; i++ {
 			action := n.Log.Entries[i].Action
 			key := n.Log.Entries[i].Key
-			if action == pb.LogRecord_SET {
+			if action == raft.LogRecord_SET {
 				value := n.Log.Entries[i].Value
 				n.Store.Set(key, value)
-			} else if action == pb.LogRecord_DEL {
+			} else if action == raft.LogRecord_DEL {
 				n.Store.Delete(key)
 			}
 		}
@@ -504,34 +456,23 @@ func (n *Node) checkPrevious(prevIndex int64, prevTerm int64) bool {
 }
 
 // HandleAppend responds to append-log messages from leader nodes
-func (n *Node) HandleAppend(c *gin.Context) {
-	var body AppendBody
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	var status int
+func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 	var success bool
 
-	valid := n.validateAppend(body.Term, body.LeaderId)
-	matched := n.checkPrevious(body.PrevLogIndex, body.PrevLogTerm)
+	valid := n.validateAppend(req.Term, req.LeaderId)
+	matched := n.checkPrevious(req.PrevLogIndex, req.PrevLogTerm)
 	if !valid {
 		// Invalid request
-		status = http.StatusConflict
 		success = false
 	} else if !matched {
 		// Valid request, but earlier entries needed
-		status = http.StatusOK
 		success = false
 	} else {
 		// Valid request, and all required logs present
-		if len(body.Entries) > 0 {
-			n.reconcileLogs(body)
+		if len(req.Entries) > 0 {
+			n.reconcileLogs(req)
 		}
-		n.applyCommittedLogs(body.LeaderCommit)
-
-		status = http.StatusOK
+		n.applyCommittedLogs(req.LeaderCommit)
 		success = true
 	}
 	if valid {
@@ -543,5 +484,5 @@ func (n *Node) HandleAppend(c *gin.Context) {
 		n.resetElectionTimer()
 	}
 	// finally
-	c.JSON(status, gin.H{"term": n.Term, "success": success})
+	return &raft.AppendReply{Term: n.Term, Success: success}
 }

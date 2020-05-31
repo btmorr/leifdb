@@ -4,7 +4,7 @@
 package main
 
 import (
-	"errors"
+	"flag"
 	"fmt"
 	"hash/fnv"
 	"log"
@@ -17,7 +17,10 @@ import (
 
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/node"
+	"github.com/btmorr/leifdb/internal/raftserver"
+	"github.com/btmorr/leifdb/internal/util"
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 )
 
 // A HealthResponse is a response body template for the health route [note: the
@@ -78,8 +81,6 @@ func buildRouter(n *node.Node) *gin.Engine {
 	router := gin.Default()
 
 	router.GET("/health", handleHealth)
-	router.POST("/vote", n.HandleVote)
-	router.POST("/append", n.HandleAppend)
 	router.GET("/db/:key", handleRead)
 	router.POST("/db/:key", handleWrite)
 	router.DELETE("/db/:key", handleDelete)
@@ -104,67 +105,82 @@ func GetOutboundIP() net.IP {
 	return localAddr.IP
 }
 
-// EnsureDirectory creates the directory if it does not exist (fail if path
-// exists and is not a directory)
-func EnsureDirectory(path string) error {
-	_, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		var fileMode os.FileMode
-		fileMode = os.ModeDir | 0775
-		mdErr := os.MkdirAll(path, fileMode)
-		return mdErr
-	}
-	if err != nil {
-		return err
-	}
-	file, _ := os.Stat(path)
-	if !file.IsDir() {
-		return errors.New(path + " is not a directory")
-	}
-	return nil
-}
-
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	// todo: make ports configurable
-	raftPort := "16990"
-	clientPort := "8080"
+	var dataDir = *flag.String("data", "", "Path to directory for data storage")
+	var raftPort = *flag.Int("raftport", 16990, "Port number for Raft gRPC service interface")
+	var clientPort = *flag.Int("httpport", 8080, "Port number for database HTTP service interface")
+	flag.Parse()
+
+	raftPortString := fmt.Sprintf(":%d", raftPort)
+	clientPortString := fmt.Sprintf(":%d", clientPort)
 	ip := GetOutboundIP()
-	raftAddr := fmt.Sprintf("%s:%s", ip, raftPort)
-	clientAddr := fmt.Sprintf("%s:%s", ip, clientPort)
+	raftAddr := fmt.Sprintf("%s%s", ip, raftPortString)
+	clientAddr := fmt.Sprintf("%s%s", ip, clientPortString)
 	log.Println("Cluster interface: " + raftAddr)
 	log.Println("Client interface:  " + clientAddr)
 
-	_, err := net.Listen("tcp", fmt.Sprintf(":"+raftPort))
-	if err != nil {
-		log.Fatal("Cluster interface failed to bind:", err)
+	if dataDir == "" {
+		hash := fnv.New32()
+		hash.Write([]byte(raftAddr))
+		hashString := fmt.Sprintf("%x", hash.Sum(nil))
+
+		homeDir, _ := os.UserHomeDir()
+		dataDir = filepath.Join(homeDir, ".leifdb", hashString)
 	}
-	// todo: stand up grpc server (using variable elided just above)
 
-	hash := fnv.New32()
-	hash.Write([]byte(raftAddr))
-	hashString := fmt.Sprintf("%x", hash.Sum(nil))
+	// Applicaiton defaults to single-node operation. To configure, copy
+	// "config/default_config.toml" to "<data directory>/config.toml"
+	// and then edit. By default, looks for "$HOME/.leifdb/config.toml"
+	// and falls back to single-node configuration if not found.
+	viper.SetConfigName("config")
+	viper.AddConfigPath(dataDir)
 
-	// todo: make this configurable
-	homeDir, _ := os.UserHomeDir()
-	dataDir := filepath.Join(homeDir, ".leifdb", hashString)
+	otherNodes := make([]string, 0, 0)
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			// Config file was found but another error was produced
+			log.Fatalln("Error parsing config file:", err)
+		}
+		log.Println("No config file found -- defaulting to single-node configuration")
+	} else {
+		// Config file found and successfully parsed
+		if viper.GetString("configuration.mode") == "multi" {
+			fmt.Println("Multi-node configuration. Members:")
+			svs := viper.GetStringSlice("configuration.members")
+			for _, s := range svs {
+				subv := viper.Sub(s)
+				addr := subv.GetString("host")
+				port := subv.GetInt("port")
+				fmt.Printf("%s at %s:%d\n", s, addr, port)
+				otherNodes = append(otherNodes, fmt.Sprintf("%s:%d", addr, port))
+			}
+		} else {
+			fmt.Println("Single-node configuration")
+		}
+	}
+
 	log.Println("Data dir: ", dataDir)
-	err2 := EnsureDirectory(dataDir)
+	err2 := util.EnsureDirectory(dataDir)
 	if err2 != nil {
 		panic(err2)
 	}
 
 	store := db.NewDatabase()
-
 	config := node.NewNodeConfig(dataDir, raftAddr)
-
 	n, err := node.NewNode(config, store)
 	if err != nil {
 		log.Fatal("Failed to initialize node with error:", err)
 	}
+
+	for _, nodeId := range otherNodes {
+		n.AddForeignNode(nodeId)
+	}
+
 	log.Println("Election timeout: ", n.ElectionTimeout.String())
 
+	raftserver.StartRaftServer(raftPortString, n)
 	router := buildRouter(n)
 	router.Run()
 }
