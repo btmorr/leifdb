@@ -16,11 +16,14 @@ import (
 	"google.golang.org/grpc"
 )
 
+// A ForeignNode is another member of the cluster, with connections needed
+// to manage gRPC interaction with that node
 type ForeignNode struct {
 	Connection *grpc.ClientConn
 	Client     raft.RaftClient
 }
 
+// NewForeignNode constructs a ForeignNode from an address ("host:port")
 func NewForeignNode(address string) (*ForeignNode, error) {
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
@@ -32,17 +35,21 @@ func NewForeignNode(address string) (*ForeignNode, error) {
 	return &ForeignNode{Connection: conn, Client: client}, err
 }
 
+// Close cleans up the gRPC connection with the foreign node
 func (f *ForeignNode) Close() {
 	f.Connection.Close()
 }
 
-type role int
+// A Role is one of Leader, Candidate, or Follower
+type Role string
 
-// A role is one of Leader, Candidate, or Follower
+// A Follower is a read-only member of a cluster
+// A Candidate solicits votes to become a Leader
+// A Leader is a read/write member of a cluster
 const (
-	Follower  role = iota // A Follower is a read-only member of a cluster
-	Candidate             // A Candidate solicits votes to become a Leader
-	Leader                // A Leader is a read/write member of a cluster
+	Follower  Role = "Follower"
+	Candidate      = "Candidate"
+	Leader         = "Leader"
 )
 
 // NodeConfig contains configurable properties for a node
@@ -53,28 +60,36 @@ type NodeConfig struct {
 	LogFile  string
 }
 
+// ForeignNodeChecker functions are used to determine if a request comes from
+// a valid participant in a cluster. It should generally check against a
+// configuration file or other canonical record of membership, but can also
+// be mocked out for test to cause a Node to respond to RPC requests without
+// creating a full multi-node deployment.
+type ForeignNodeChecker func(string, map[string]*ForeignNode) bool
+
 // A Node is one member of a Raft cluster, with all state needed to operate the
 // algorithm's state machine. At any one time, its role may be Leader, Candidate,
 // or Follower, and have different responsibilities depending on its role
 type Node struct {
-	Value           map[string]string
-	NodeId          string
-	ElectionTimeout time.Duration
-	electionTimer   *time.Timer
-	appendTimeout   time.Duration
-	appendTicker    *time.Ticker
-	State           role
-	haltAppend      chan bool
-	Term            int64
-	votedFor        string
-	otherNodes      map[string]*ForeignNode
-	nextIndex       map[string]int64
-	matchIndex      map[string]int64
-	commitIndex     int64
-	lastApplied     int64
-	Log             *raft.LogStore
-	config          NodeConfig
-	Store           *db.Database
+	Value            map[string]string
+	NodeId           string
+	ElectionTimeout  time.Duration
+	electionTimer    *time.Timer
+	appendTimeout    time.Duration
+	appendTicker     *time.Ticker
+	State            Role
+	haltAppend       chan bool
+	Term             int64
+	votedFor         string
+	otherNodes       map[string]*ForeignNode
+	CheckForeignNode ForeignNodeChecker
+	nextIndex        map[string]int64
+	matchIndex       map[string]int64
+	commitIndex      int64
+	lastApplied      int64
+	Log              *raft.LogStore
+	config           NodeConfig
+	Store            *db.Database
 }
 
 // Client methods for managing raft state
@@ -171,7 +186,7 @@ func (n *Node) SetLog(newLog []*raft.LogRecord) error {
 // SetState designates the Node as one of the roles in the role enumeration,
 // and handles any side-effects that should happen specifically on state
 // transition
-func (n *Node) SetState(newState role) {
+func (n *Node) SetState(newState Role) {
 	n.State = newState
 	// todo: move starting/stopping election timer and append ticker here
 }
@@ -185,6 +200,7 @@ func (n *Node) startAppendTicker() {
 			select {
 			case <-n.haltAppend:
 				log.Println("No longer leader. Halting log append...")
+				// defer?
 				n.resetElectionTimer()
 				return
 			case <-n.appendTicker.C:
@@ -196,7 +212,7 @@ func (n *Node) startAppendTicker() {
 	}()
 }
 
-// requestVote sends a request for vote to a single other node (see `doElection`)
+// requestVote sends a request for vote to a single other node (see `DoElection`)
 func (n *Node) requestVote(host string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -215,7 +231,7 @@ func (n *Node) requestVote(host string) (bool, error) {
 	return vote.VoteGranted, err
 }
 
-// doElection sends out requests for votes to each other node in the Raft cluster.
+// DoElection sends out requests for votes to each other node in the Raft cluster.
 // When a Raft node's role is "candidate", it should send start an election. If it
 // is granted votes from a majority of nodes, its role changes to "leader". If it
 // receives an append-logs message during the election from a node with a term higher
@@ -223,7 +239,7 @@ func (n *Node) requestVote(host string) (bool, error) {
 // receive a majority of votes and also does not receive an append-logs from a valid
 // leader, it increments the term and starts another election (repeat until a leader
 // is elected).
-func (n *Node) doElection() {
+func (n *Node) DoElection() {
 	log.Println("Starting Election")
 	n.SetState(Candidate)
 	log.Println("Becoming candidate")
@@ -241,9 +257,9 @@ func (n *Node) doElection() {
 	numVotes := 1
 	for k := range n.otherNodes {
 		_, err := n.requestVote(k)
-		log.Println("got a vote")
+		// log.Println("got a vote")
 		if err == nil {
-			log.Println("it's a 'yay'")
+			// log.Println("it's a 'yay'")
 			numVotes = numVotes + 1
 		}
 	}
@@ -283,6 +299,13 @@ func NewNodeConfig(dataDir string, addr string) NodeConfig {
 		LogFile:  filepath.Join(dataDir, "raftlog")}
 }
 
+// checkForeignNode verifies that a node is a known member of the cluster (this
+// is the expected checker for a Node, but is extracted so it can be mocked)
+func checkForeignNode(addr string, known map[string]*ForeignNode) bool {
+	_, ok := known[addr]
+	return ok
+}
+
 // NewNode initializes a Node with a randomized election timeout between
 // 150-300ms, and starts the election timer
 func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
@@ -299,38 +322,54 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 	log.Println("Loaded", len(logStore.Entries), "logs")
 
 	n := Node{
-		NodeId:          config.Id,
-		ElectionTimeout: electionTimeout,
-		electionTimer:   time.NewTimer(electionTimeout),
-		appendTimeout:   appendTimeout,
-		appendTicker:    time.NewTicker(appendTimeout),
-		State:           Follower,
-		haltAppend:      make(chan bool),
-		Term:            termRecord.Term,
-		votedFor:        termRecord.VotedFor,
-		otherNodes:      make(map[string]*ForeignNode),
-		nextIndex:       make(map[string]int64),
-		matchIndex:      make(map[string]int64),
-		commitIndex:     0,
-		lastApplied:     0,
-		Log:             logStore,
-		config:          config,
-		Store:           store}
+		NodeId:           config.Id,
+		ElectionTimeout:  electionTimeout,
+		electionTimer:    time.NewTimer(electionTimeout),
+		appendTimeout:    appendTimeout,
+		appendTicker:     time.NewTicker(appendTimeout),
+		State:            Follower,
+		haltAppend:       make(chan bool),
+		Term:             termRecord.Term,
+		votedFor:         termRecord.VotedFor,
+		otherNodes:       make(map[string]*ForeignNode),
+		CheckForeignNode: checkForeignNode,
+		nextIndex:        make(map[string]int64),
+		matchIndex:       make(map[string]int64),
+		commitIndex:      0,
+		lastApplied:      0,
+		Log:              logStore,
+		config:           config,
+		Store:            store}
 
 	go func() {
 		// log.Println("First election timer")
 		<-n.electionTimer.C
-		n.doElection()
+		n.DoElection()
 	}()
 
 	return &n, nil
 }
 
-// When a Raft node is a follower or candidate and receives a message from a
-// valid leader, it should reset its election countdown timer
-func (n *Node) resetElectionTimer() {
-	log.Println("Restarting election timer")
+// Halt is used to stop all timers (primarily in test)
+func (n *Node) Halt() {
+	fmt.Println("Halting")
+	if !n.electionTimer.Stop() {
+		select {
+		case <-n.electionTimer.C:
+		default:
+		}
+	}
 
+	n.appendTicker.Stop()
+	select {
+	case <-n.appendTicker.C:
+	default:
+	}
+}
+
+// resetElectionTimer restarts the countdown to election when a Raft node is a
+// follower or candidate and receives a message from a valid leader
+func (n *Node) resetElectionTimer() {
 	if !n.electionTimer.Stop() {
 		select {
 		case <-n.electionTimer.C:
@@ -341,7 +380,7 @@ func (n *Node) resetElectionTimer() {
 
 	go func() {
 		<-n.electionTimer.C
-		n.doElection()
+		n.DoElection()
 	}()
 }
 
@@ -361,7 +400,7 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 		log.Println("Expired term vote received. New term:", n.Term)
 		n.SetTerm(n.Term+1, n.votedFor)
 		vote = false
-	} else if _, ok := n.otherNodes[req.CandidateId]; !ok {
+	} else if !n.CheckForeignNode(req.CandidateId, n.otherNodes) {
 		log.Println("Unknown foreign node:", req.CandidateId)
 		vote = false
 	} else {
@@ -371,6 +410,7 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 			n.haltAppend <- true
 		}
 		n.SetState(Follower)
+		// defer?
 		n.resetElectionTimer()
 
 		// todo: check candidate's log details
@@ -426,6 +466,8 @@ func (n *Node) reconcileLogs(body *raft.AppendRequest) {
 	n.Log.Entries = append(n.Log.Entries, newLogs...)
 }
 
+// applyCommittedLogs updates the database with actions that have not yet been
+// applied, up to the new commit index
 func (n *Node) applyCommittedLogs(commitIdx int64) {
 	log.Println("Current commit:", n.commitIndex, "- Leader commit:", commitIdx)
 	if commitIdx > n.commitIndex {
@@ -481,6 +523,7 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 			n.SetState(Follower)
 		}
 		// only reset the election timer on append from a valid leader
+		// defer?
 		n.resetElectionTimer()
 	}
 	// finally
