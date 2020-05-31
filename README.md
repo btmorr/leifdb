@@ -73,7 +73,7 @@ The persistent data directory is used for storing configuration files and non-vo
 
 ### Cluster configuration
 
-In order to interact with other members of a raft cluster, each node must know the addresses for other members. Currently, this is not determined dynamically. In order to create a multi-node deployment, there must be a file in the [persistent data directory](#data-directory) named "config.<ext>", where "<ext>" is one of "json", "yaml", "toml", or other format supported by [spf13/viper]. For instructions on how to write the config file, see the [example config file](./config/default_config.toml). If you want to use a format other than TOML, the [Viper docs on nested keys] demonstrate use with JSON, and other sections include examples of yaml and other formats.
+In order to interact with other members of a raft cluster, each node must know the addresses for other members. Currently, this is not determined dynamically. In order to create a multi-node deployment, there must be a file in the [persistent data directory](#data-directory) named "config.<ext>", where "<ext>" is one of "json", "yaml", "toml", or other format supported by [spf13/viper]. For instructions on how to write the config file, see the [example config file]. If you want to use a format other than TOML, the [Viper docs on nested keys] demonstrate use with JSON, and other sections include examples of yaml and other formats.
 
 This config in TOML:
 
@@ -177,18 +177,15 @@ Currently, the return code of this endpoint is the main indicator of health (200
 ## Todo
 
 Raft basics (everything from the [short Raft paper]):
-- leader index volatile state
 - leader keep track of log index for each other node, send append-logs requests to each based on last known log index, and update commit index for logs appended to a majority of nodes
 - add log comparison check to vote handler (election restriction)
 - add more checking on most recently seen term
-- modify append request job to keep track of logs on other nodes and update commit
 
 Raft complete (additional functionality in the [full Raft paper]):
 - log compaction
 - changes in cluster membership
 
 General application:
-- Add configuration options (probably use "flag")
 - Add scripts for starting a cluster / changing membership
 - OpenAPI compatibility for HTTP API?
 - Dashboard for visualization / management of a cluster?
@@ -227,3 +224,4 @@ Aside from the Raft papers themselves, here are some related resources:
 [build-badge]: https://travis-ci.com/btmorr/leifdb.svg?branch=master
 
 [Contributing Guide]: ./CONTRIBUTING.md
+[example config file]: ./config/default_config.toml

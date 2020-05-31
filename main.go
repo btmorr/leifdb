@@ -135,7 +135,7 @@ func main() {
 		dataDir = filepath.Join(homeDir, ".leifdb", hashString)
 	}
 
-	// Applicaiton defaults to single-node operation. To configure, copy
+	// Application defaults to single-node operation. To configure, copy
 	// "config/default_config.toml" to "<data directory>/config.toml"
 	// and then edit. By default, looks for "$HOME/.leifdb/config.toml"
 	// and falls back to single-node configuration if not found.
