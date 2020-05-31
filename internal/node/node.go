@@ -1,13 +1,11 @@
 package node
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -199,39 +197,22 @@ func (n *Node) startAppendTicker() {
 }
 
 // requestVote sends a request for vote to a single other node (see `doElection`)
-func (n Node) requestVote(host string, term int64) (bool, error) {
-	uri := "http://" + host + "/vote"
-	log.Println("Requesting vote from ", host)
+func (n *Node) requestVote(host string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 
-	body := raft.VoteRequest{
-		Term:         term,
+	voteRequest := &raft.VoteRequest{
+		Term:         n.Term,
 		CandidateId:  n.NodeId,
 		LastLogIndex: 0,
 		LastLogTerm:  0}
 
-	b, err0 := json.Marshal(body)
-	if err0 != nil {
-		return false, err0
-	}
-	br := bytes.NewReader(b)
-
-	resp, err1 := http.Post(uri, "application/json", br)
-	if err1 != nil {
-		return false, err1
+	vote, err := n.otherNodes[host].Client.RequestVote(ctx, voteRequest)
+	if err != nil {
+		log.Printf("Error requesting vote from %s: %v", host, err)
 	}
 
-	raw, err2 := ioutil.ReadAll(resp.Body)
-	if err2 != nil {
-		return false, err2
-	}
-
-	var vote raft.VoteReply
-	err3 := json.Unmarshal(raw, &vote)
-	if err3 != nil {
-		return false, err3
-	}
-
-	return vote.VoteGranted, err3
+	return vote.VoteGranted, err
 }
 
 // doElection sends out requests for votes to each other node in the Raft cluster.
@@ -259,7 +240,7 @@ func (n *Node) doElection() {
 	n.resetElectionTimer()
 	numVotes := 1
 	for k := range n.otherNodes {
-		_, err := n.requestVote(k, n.Term)
+		_, err := n.requestVote(k)
 		log.Println("got a vote")
 		if err == nil {
 			log.Println("it's a 'yay'")
