@@ -1,6 +1,8 @@
+// +build ignore
+
 // Example of how to parse toml using viper
 
-package main
+package tomlparse
 
 import (
 	"bytes"

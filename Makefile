@@ -2,9 +2,12 @@
 test: app
 	go test
 
-app: main.go main_test.go
+.PHONY: clean
+clean:
 	go clean
 	rm ./app || true
+
+app: clean
 	gofmt -w -s .
 	go fix
 	go build -o app
@@ -19,3 +22,7 @@ protobuf:
 	mkdir -p ./internal/raft
 	cp ./github.com/btmorr/leifdb/internal/raft/* ./internal/raft/
 	rm -rf ./github.com
+
+.PHONY: find
+find:
+

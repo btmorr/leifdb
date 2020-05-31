@@ -4,7 +4,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -19,6 +18,7 @@ import (
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raftserver"
+	"github.com/btmorr/leifdb/internal/util"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 )
@@ -105,41 +105,12 @@ func GetOutboundIP() net.IP {
 	return localAddr.IP
 }
 
-// EnsureDirectory creates the directory if it does not exist (fail if path
-// exists and is not a directory)
-func EnsureDirectory(path string) error {
-	_, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		var fileMode os.FileMode
-		fileMode = os.ModeDir | 0775
-		mdErr := os.MkdirAll(path, fileMode)
-		return mdErr
-	}
-	if err != nil {
-		return err
-	}
-	file, _ := os.Stat(path)
-	if !file.IsDir() {
-		return errors.New(path + " is not a directory")
-	}
-	return nil
-}
-
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	homeDir, _ := os.UserHomeDir()
-	defaultDataDir := filepath.Join(homeDir, ".leifdb", hashString)
-
-	var dataDir = flag.String("data", defaultDataDir, "Path to directory for data storage")
+	var dataDir = *flag.String("data", "", "Path to directory for data storage")
 	var raftPort = flag.Int("raftport", 16990, "Port number for Raft gRPC service interface")
 	var clientPort = flag.Int("httpport", 8080, "Port number for database HTTP service interface")
-
-	log.Println("Data dir: ", dataDir)
-	err2 := EnsureDirectory(dataDir)
-	if err2 != nil {
-		panic(err2)
-	}
 
 	// Applicaiton defaults to single-node operation. To configure, copy
 	// "config/default_config.toml" to "<data directory>/config.toml"
@@ -157,14 +128,18 @@ func main() {
 		log.Println("No config file found -- defaulting to single-node configuration")
 	} else {
 		// Config file found and successfully parsed
-		fmt.Println("Configuration:")
-		svs := viper.GetStringSlice("conf.members")
-		for _, s := range svs {
-			subv := viper.Sub("conf." + s)
-			addr := subv.GetString("address")
-			port := subv.GetInt("port")
-			fmt.Printf("%s at %s:%d\n", s, addr, port)
-			otherNodes = append(otherNodes, fmt.Sprintf("%s:%d", addr, port))
+		if viper.GetString("configuration.mode") == "multi" {
+			fmt.Println("Multi-node configuration. Members:")
+			svs := viper.GetStringSlice("configuration.members")
+			for _, s := range svs {
+				subv := viper.Sub(s)
+				addr := subv.GetString("host")
+				port := subv.GetInt("port")
+				fmt.Printf("%s at %s:%d\n", s, addr, port)
+				otherNodes = append(otherNodes, fmt.Sprintf("%s:%d", addr, port))
+			}
+		} else {
+			fmt.Println("Single-node configuration")
 		}
 	}
 
@@ -176,14 +151,23 @@ func main() {
 	log.Println("Cluster interface: " + raftAddr)
 	log.Println("Client interface:  " + clientAddr)
 
-	hash := fnv.New32()
-	hash.Write([]byte(raftAddr))
-	hashString := fmt.Sprintf("%x", hash.Sum(nil))
+	if dataDir == "" {
+		hash := fnv.New32()
+		hash.Write([]byte(raftAddr))
+		hashString := fmt.Sprintf("%x", hash.Sum(nil))
+
+		homeDir, _ := os.UserHomeDir()
+		dataDir = filepath.Join(homeDir, ".leifdb", hashString)
+	}
+
+	log.Println("Data dir: ", dataDir)
+	err2 := util.EnsureDirectory(dataDir)
+	if err2 != nil {
+		panic(err2)
+	}
 
 	store := db.NewDatabase()
-
 	config := node.NewNodeConfig(dataDir, raftAddr)
-
 	n, err := node.NewNode(config, store)
 	if err != nil {
 		log.Fatal("Failed to initialize node with error:", err)

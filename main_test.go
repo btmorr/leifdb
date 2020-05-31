@@ -10,35 +10,24 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 
 	db "github.com/btmorr/leifdb/internal/database"
 	. "github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raft"
+	"github.com/btmorr/leifdb/internal/util"
 	"github.com/gin-gonic/gin"
 )
-
-func CreateTestDir() (string, error) {
-	tmpDir := os.TempDir()
-	dataDir := filepath.Join(tmpDir, ".tmp-leifdb")
-	err := EnsureDirectory(dataDir)
-	return dataDir, err
-}
-
-func RemoveTestDir(path string) error {
-	return os.RemoveAll(path)
-}
 
 func setupServer(t *testing.T) (*gin.Engine, *Node) {
 	addr := "localhost:8080"
 
-	testDir, err := CreateTestDir()
+	testDir, err := util.CreateTmpDir(".tmp-leifdb")
 	if err != nil {
 		log.Fatalln("Error creating test dir:", err)
 	}
 	t.Cleanup(func() {
-		RemoveTestDir(testDir)
+		util.RemoveTmpDir(testDir)
 	})
 
 	store := db.NewDatabase()
@@ -262,9 +251,9 @@ func TestPersistence(t *testing.T) {
 	log.Println("~~~ TestPersistence")
 	addr := "localhost:8080"
 
-	testDir, _ := CreateTestDir()
+	testDir, _ := util.CreateTmpDir(".tmp-leifdb")
 	t.Cleanup(func() {
-		RemoveTestDir(testDir)
+		util.RemoveTmpDir(testDir)
 	})
 
 	config := NewNodeConfig(testDir, addr)

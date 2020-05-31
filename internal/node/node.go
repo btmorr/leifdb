@@ -337,7 +337,7 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		Store:           store}
 
 	go func() {
-		log.Println("First election timer")
+		// log.Println("First election timer")
 		<-n.electionTimer.C
 		n.doElection()
 	}()

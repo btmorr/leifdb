@@ -1,9 +1,11 @@
+// +build ignore
+
 // Creating an object that can be used to call methods from another object
 // Used in this application for building an HTTP rounter that can call
 // handler methods on the Node or the Database, without having to include
 // the http framework in the node or database packages
 
-package main
+package functionhooks
 
 import "fmt"
 
