@@ -39,13 +39,13 @@ To manually run the test suite:
 go test
 ```
 
-To run the server, do:
+After building the binary, to find out what command line parameters are available:
 
 ```
-make run
+./app -h
 ```
 
-Or, to run manually on Linux/Unix:
+To run the server with default parameters, do:
 
 ```
 ./app
@@ -57,11 +57,90 @@ Or on Windows:
 ./app.exe
 ```
 
+## Configuration
+
+### HTTP interface
+
+The HTTP interface is used for client interactions with the database. It can be specified using the `-httpport` flag with an integer value. If no value is provided, port 8080 is used.
+
+### gPRC interface
+
+The gRPC interface is used for interactions between members of the Raft cluster. It can be specified using the `-raftport` flag with an integer value. If no value is provided, port 16990 is used.
+
+### Data directory
+
+The persistent data directory is used for storing configuration files and non-volatile server state, and can be specified using the `-data` flag with a path. The path may point to a non-existent location, but cannot exactly match a extant file (an extant directory is fine). If no value is provided, "$HOME/.leifdb/<addr_hash>" is used, where "<addr_hash>" is a non-cryptographic hash of the gRPC interface for the server (such that configration is consistent for a server as long as it is deployed with the same IP address and same port specified by `-raftport`)
+
+### Cluster configuration
+
+In order to interact with other members of a raft cluster, each node must know the addresses for other members. Currently, this is not determined dynamically. In order to create a multi-node deployment, there must be a file in the [persistent data directory](#data-directory) named "config.<ext>", where "<ext>" is one of "json", "yaml", "toml", or other format supported by [spf13/viper]. For instructions on how to write the config file, see the [example config file](./config/default_config.toml). If you want to use a format other than TOML, the [Viper docs on nested keys] demonstrate use with JSON, and other sections include examples of yaml and other formats.
+
+This config in TOML:
+
+```
+[configuration]
+mode = "multi"
+members = ["server1", "server2", "server3"]
+
+[server1]
+host = "localhost"
+port = 16990
+
+[server2]
+host = "localhost"
+port = 16991
+
+[server3]
+host = "localhost"
+port = 16992
+```
+
+is equivalent to this in JSON:
+
+```
+{
+    "configuration": {
+        "mode": "multi",
+        "members": ["server1", "server2", "server3"],
+        "server1": {
+            "host": "localhost",
+            "port": 16990
+        },
+        "server2": {
+            "host": "localhost",
+            "port": 16991
+        },
+        "server3": {
+            "host": "localhost",
+            "port": 16992
+        }
+    }
+}
+```
+
+or this in YAML:
+
+```
+configuration:
+    mode: multi
+    members:
+      - server1
+      - server2
+      - server3
+    server1:
+        host: localhost
+        port: 16990
+    server2:
+        host: localhost
+        port: 16991
+    server3:
+        host: localhost
+        port: 16992
+```
+
 ## Endpoints
 
 ### Database requests
-
-(Under construction...endpoints don't all consistently work yet)
 
 To create/update a key-value pair (key `somekey`):
 
@@ -117,13 +196,16 @@ General application:
 ## Prior art
 
 Aside from the Raft papers themselves, here are some related resources:
-- [The Secret Lives of Data](http://thesecretlivesofdata.com/raft/)
-- [Eli Bendersky's blog post](https://eli.thegreenplace.net/2020/implementing-raft-part-0-introduction/) [which I'm explicitly not reading until after I get an initial version of my own done so that I can muddle along and figure things out the hard way, but leaving this note here for later / for others' benefit]
-- A [talk on Raft](https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained/) from the [Consul] team
+- [The Secret Lives of Data]
+- [Eli Bendersky's blog post] [which I'm explicitly not reading until after I get an initial version of my own done so that I can muddle along and figure things out the hard way, but leaving this note here for later / for others' benefit]
+- A [talk on Raft] from the [Consul] team
 
 [Raft]: https://raft.github.io/
 [short Raft paper]: https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf
 [full Raft paper]: https://raft.github.io/raft.pdf
+[The Secret Lives of Data]: http://thesecretlivesofdata.com/raft/
+[Eli Bendersky's blog post]: https://eli.thegreenplace.net/2020/implementing-raft-part-0-introduction/
+[talk on Raft]: https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained/
 
 [etcd]: https://etcd.io
 [Kubernetes]: https://kubernetes.io/
@@ -134,6 +216,8 @@ Aside from the Raft papers themselves, here are some related resources:
 [Paxos]: http://research.microsoft.com/users/lamport/pubs/paxos-simple.pdf
 
 [gin-gonic/gin]: https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview
+[spf13/viper]: https://github.com/spf13/viper
+[Viper docs on nested keys]: https://github.com/spf13/viper#accessing-nested-keys
 
 [report-card]: https://goreportcard.com/report/github.com/btmorr/leifdb
 [report-card-badge]: https://goreportcard.com/badge/github.com/btmorr/leifdb

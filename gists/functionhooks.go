@@ -5,24 +5,27 @@
 // handler methods on the Node or the Database, without having to include
 // the http framework in the node or database packages
 
+// There's probably a nicer way to do this with interfaces, but this does
+// the job for now
+
 package functionhooks
 
 import "fmt"
 
-type Thing struct {
+type thing struct {
 	value map[string]string
 }
 
-func NewThing() *Thing {
-	return &Thing{value: make(map[string]string)}
+func newThing() *thing {
+	return &thing{value: make(map[string]string)}
 }
 
-type Other struct {
+type other struct {
 	Set func(string, string)
 	Get func(string) string
 }
 
-func builder(t *Thing) *Other {
+func builder(t *thing) *other {
 	setter := func(k string, v string) {
 		t.value[k] = v
 	}
@@ -31,14 +34,14 @@ func builder(t *Thing) *Other {
 		return t.value[k]
 	}
 
-	return &Other{
+	return &other{
 		Get: getter,
 		Set: setter}
 }
 
 func f() {
 
-	t := NewThing()
+	t := newThing()
 	o := builder(t)
 
 	o.Set("greeting", "Hello World!")
