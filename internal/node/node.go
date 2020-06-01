@@ -429,10 +429,10 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 		success = false
 	}
 	if leaderId != n.votedFor {
-		byzMsg1 := "Append request from LeaderId mismatch for this term. "
-		byzMsg2 := "Possible byzantine actor: " + leaderId
-		byzMsg3 := " (voted for: " + n.votedFor + ")"
-		log.Println(byzMsg1 + byzMsg2 + byzMsg3)
+		msg1 := "Append request from LeaderId mismatch for this term. "
+		msg2 := "Got: " + leaderId + " (voted for: " + n.votedFor + "). "
+		msg3 := "Has the configuration changed?"
+		log.Println(msg1 + msg2 + msg3)
 		success = false
 	}
 	return success
