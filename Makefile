@@ -1,6 +1,9 @@
 .PHONY: test
 test: app
-	go test ./...
+	go test -coverprofile=coverage.out ./...
+
+viewcoverage: coverage.out
+	go tool cover -html=coverage.out
 
 .PHONY: clean
 clean:
