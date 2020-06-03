@@ -186,8 +186,9 @@ Raft complete (additional functionality in the [full Raft paper]):
 - changes in cluster membership
 
 General application:
-- Add scripts for starting a cluster / changing membership
-- OpenAPI compatibility for HTTP API?
+- Add scripts for starting a cluster / changing membership (probably something to the tune of [Docker] + [Kubernetes] + [Terraform])
+- Performance benchmarking (see the "Measurement" section of [Paxos Made Live] for a couple of ways to set up benchmarks) (also, compare performance with differing levels of debug logging turned on)
+- Swagger/OpenAPI compatibility for HTTP API
 - Dashboard for visualization / management of a cluster?
 
 ## Prior art
@@ -203,11 +204,14 @@ Aside from the Raft papers themselves, here are some related resources:
 [The Secret Lives of Data]: http://thesecretlivesofdata.com/raft/
 [Eli Bendersky's blog post]: https://eli.thegreenplace.net/2020/implementing-raft-part-0-introduction/
 [talk on Raft]: https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained/
+[Paxos Made Live]: https://dl.acm.org/doi/10.1145/1281100.1281103
 
+[Docker]: https://www.docker.com/
 [etcd]: https://etcd.io
 [Kubernetes]: https://kubernetes.io/
-[Consul]: https://hashicorp.com/products/consul
-[Vault]: https://hashicorp.com/products/vault
+[Consul]: https://www.consul.io/
+[Vault]: https://www.vaultproject.io/
+[Terraform]: https://www.terraform.io/
 [ZooKeeper]: https://zookeeper.apache.org/
 [Zab]: https://www.cs.cornell.edu/courses/cs6452/2012sp/papers/zab-ieee.pdf
 [Paxos]: http://research.microsoft.com/users/lamport/pubs/paxos-simple.pdf
