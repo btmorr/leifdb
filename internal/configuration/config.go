@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
-	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -34,7 +33,7 @@ func GetOutboundIP() net.IP {
 	// long as it's in a public subnet
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	defer conn.Close()
 
@@ -88,15 +87,13 @@ func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			// Config file was found but another error was produced
-			log.Fatalln("Error parsing config file:", err)
+			panic(err)
 		}
-		log.Println("No config file found -- defaulting to single-node configuration")
+		// No config file found -- defaulting to single-node configuration
 	} else {
 		// Config file found and successfully parsed
 		if viper.GetString("configuration.mode") == "multi" {
 			mode = MultiNode
-			// fmt.Println("Multi-node configuration. Members:")
-
 			svs := viper.GetStringSlice("configuration.members")
 			if len(svs) < 2 {
 				panic(ErrInvalidMultiConfig)
@@ -119,9 +116,7 @@ func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
 					panic(ErrSelfNotInConfig)
 				}
 			}
-		} else {
-			// fmt.Println("Single-node configuration")
-		}
+		} // else single node configuration
 	}
 	return &ClusterConfig{
 		Mode:    mode,
@@ -143,8 +138,6 @@ func BuildServerConfig() *ServerConfig {
 
 	raftAddr := fmt.Sprintf("%s:%d", ip, raftPort)
 	clientAddr := fmt.Sprintf("%s:%d", ip, clientPort)
-	// log.Println("Cluster interface: " + raftAddr)
-	// log.Println("Client interface:  " + clientAddr)
 
 	if dataDir == "" {
 		hash := fnv.New32()
@@ -154,7 +147,6 @@ func BuildServerConfig() *ServerConfig {
 		homeDir, _ := os.UserHomeDir()
 		dataDir = filepath.Join(homeDir, ".leifdb", hashString)
 	}
-	// log.Println("Data dir: ", dataDir)
 	err2 := util.EnsureDirectory(dataDir)
 	if err2 != nil {
 		panic(err2)
