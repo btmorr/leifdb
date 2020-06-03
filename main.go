@@ -6,12 +6,15 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/btmorr/leifdb/internal/configuration"
 	"github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raftserver"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -85,7 +88,17 @@ func buildRouter(n *node.Node) *gin.Engine {
 	return router
 }
 
+// For more human-readable logs, uncomment the following function and add the
+// associated imports ("github.com/rs/zerolog", and "os")
+func init() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{
+		Out:        os.Stderr,
+		TimeFormat: time.RFC3339})
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+}
+
 func main() {
+
 	cfg := configuration.BuildServerConfig()
 	fmt.Printf("Configuration:\n%+v\n\n", *cfg)
 
