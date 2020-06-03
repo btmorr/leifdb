@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/golang/protobuf/proto"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 )
 
@@ -27,7 +27,7 @@ type ForeignNode struct {
 func NewForeignNode(address string) (*ForeignNode, error) {
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
-		log.Println("Failed to connect to", address, "-", err)
+		log.Error().Err(err).Msgf("Failed to connect to %s", address)
 		return nil, err
 	}
 	client := raft.NewRaftClient(conn)
@@ -103,16 +103,16 @@ type Node struct {
 func WriteTerm(filename string, termRecord *raft.TermRecord) error {
 	out, err := proto.Marshal(termRecord)
 	if err != nil {
-		log.Fatalln("Failed to marshal term record:", err)
+		log.Fatal().Err(err).Msg("Failed to marshal term record")
 		return err
 	}
 	_, err = os.Stat(filepath.Dir(filename))
 	if err != nil {
-		log.Fatalln("Failed stat:", err)
+		log.Fatal().Err(err).Msg("Failed stat")
 		return err
 	}
 	if err = ioutil.WriteFile(filename, out, 0644); err != nil {
-		log.Fatalln("Failed to write term file:", err)
+		log.Fatal().Err(err).Msg("Failed to write term file")
 	}
 	return err
 }
@@ -122,11 +122,10 @@ func WriteTerm(filename string, termRecord *raft.TermRecord) error {
 func ReadTerm(filename string) *raft.TermRecord {
 	record := &raft.TermRecord{Term: 0, VotedFor: ""}
 	_, err := os.Stat(filename)
-	if err != nil {
-	} else {
+	if err == nil {
 		termFile, _ := ioutil.ReadFile(filename)
 		if err = proto.Unmarshal(termFile, record); err != nil {
-			log.Println("Failed to unmarshal term file:", err)
+			log.Warn().Err(err).Msg("Failed to unmarshal term file")
 		}
 	}
 	return record
@@ -146,10 +145,10 @@ func (n *Node) SetTerm(newTerm int64, votedFor string) error {
 func WriteLogs(filename string, logStore *raft.LogStore) error {
 	out, err := proto.Marshal(logStore)
 	if err != nil {
-		log.Fatalln("Failed to marshal logs:", err)
+		log.Fatal().Err(err).Msg("Failed to marshal logs")
 	}
 	if err = ioutil.WriteFile(filename, out, 0644); err != nil {
-		log.Fatalln("Failed to write log file:", err)
+		log.Fatal().Err(err).Msg("Failed to write log file")
 	}
 	return err
 }
@@ -163,7 +162,9 @@ func ReadLogs(filename string) *raft.LogStore {
 	} else {
 		logFile, _ := ioutil.ReadFile(filename)
 		if err = proto.Unmarshal(logFile, logStore); err != nil {
-			log.Println("Failed to unmarshal log file, creating empty log store:", err)
+			log.Error().
+				Err(err).
+				Msg("Failed to unmarshal log file, creating empty log store")
 		}
 	}
 	return logStore
@@ -199,7 +200,7 @@ func (n *Node) startAppendTicker() {
 		for {
 			select {
 			case <-n.haltAppend:
-				log.Println("No longer leader. Halting log append...")
+				log.Debug().Msg("No longer leader, halting log append")
 				// defer?
 				n.resetElectionTimer()
 				return
@@ -225,7 +226,7 @@ func (n *Node) requestVote(host string) (bool, error) {
 
 	vote, err := n.otherNodes[host].Client.RequestVote(ctx, voteRequest)
 	if err != nil {
-		log.Printf("Error requesting vote from %s: %v", host, err)
+		log.Error().Err(err).Msgf("Error requesting vote from %sv", host)
 	}
 
 	return vote.VoteGranted, err
@@ -240,51 +241,49 @@ func (n *Node) requestVote(host string) (bool, error) {
 // leader, it increments the term and starts another election (repeat until a leader
 // is elected).
 func (n *Node) DoElection() {
-	log.Println("Starting Election")
+	log.Trace().Msg("Starting Election")
 	n.SetState(Candidate)
-	log.Println("Becoming candidate")
 
 	n.SetTerm(n.Term+1, n.NodeId)
 
 	numNodes := len(n.otherNodes)
 	majority := (numNodes / 2) + 1
 
-	log.Println("\tNew Term: ", n.Term)
-	log.Println("\tN other nodes: ", len(n.otherNodes))
-	log.Println("\tVotes needed: ", majority)
+	log.Info().
+		Int64("Term", n.Term).
+		Int("clusterSize", len(n.otherNodes)).
+		Int("needed", majority).
+		Msg("Becoming candidate")
 
 	n.resetElectionTimer()
 	numVotes := 1
 	for k := range n.otherNodes {
 		_, err := n.requestVote(k)
-		// log.Println("got a vote")
+		log.Trace().Msg("got a vote")
 		if err == nil {
-			// log.Println("it's a 'yay'")
+			log.Trace().Msg("it's a 'yay'")
 			numVotes = numVotes + 1
 		}
 	}
+	voteLog := log.Info().
+		Int("needed", majority).
+		Int("got", numVotes)
 	if numVotes >= majority {
-		log.Println(
-			"Election succeeded [",
-			numVotes, "out of", majority,
-			"needed]")
+		voteLog.Bool("success", true).Msg("Election succeeded")
 		n.SetState(Leader)
-		log.Println("Becoming leader")
+		log.Trace().Msg("Becoming leader")
 
 		n.electionTimer.Stop()
 		select {
 		case <-n.electionTimer.C:
 		default:
 		}
-		log.Println("Stopping election timer, starting append ticker")
+		log.Debug().Msg("Stopping election timer, starting append ticker")
 		n.startAppendTicker()
 	} else {
-		log.Println(
-			"Election failed [",
-			numVotes, "out of", majority,
-			"needed]")
+		voteLog.Bool("success", false).Msg("Election failed")
 		n.SetState(Follower)
-		log.Println("Becoming follower")
+		log.Trace().Msg("Becoming follower")
 	}
 }
 
@@ -317,9 +316,13 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 	appendTimeout := time.Duration(10) * time.Millisecond
 
 	termRecord := ReadTerm(config.TermFile)
-	log.Println("Current term:", termRecord.Term, "- Voted for:", termRecord.VotedFor)
 	logStore := ReadLogs(config.LogFile)
-	log.Println("Loaded", len(logStore.Entries), "logs")
+
+	log.Info().
+		Int64("Term", termRecord.Term).
+		Str("Vote", termRecord.VotedFor).
+		Int("nLogs", len(logStore.Entries)).
+		Msg("On load")
 
 	n := Node{
 		NodeId:           config.Id,
@@ -342,7 +345,7 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		Store:            store}
 
 	go func() {
-		// log.Println("First election timer")
+		log.Trace().Msg("First election timer")
 		<-n.electionTimer.C
 		n.DoElection()
 	}()
@@ -352,7 +355,7 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 
 // Halt is used to stop all timers (primarily in test)
 func (n *Node) Halt() {
-	fmt.Println("Halting")
+	log.Trace().Msg("Halting")
 	if !n.electionTimer.Stop() {
 		select {
 		case <-n.electionTimer.C:
@@ -387,24 +390,27 @@ func (n *Node) resetElectionTimer() {
 // AddForeignNode updates the list of known other members of the raft cluster
 func (n *Node) AddForeignNode(addr string) {
 	n.otherNodes[addr], _ = NewForeignNode(addr)
-	log.Println("Added", addr, "to known nodes")
-	log.Println("Nodes:", n.otherNodes)
+	log.Info().Msgf("Added %s to known nodes", addr)
 }
 
 // HandleVote responds to vote requests from candidate nodes
 func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
-	log.Println(req.CandidateId, " proposed term: ", req.Term)
+	log.Info().Msgf("%s proposed term: %d", req.CandidateId, req.Term)
 	var vote bool
+	var msg string
 	if req.Term <= n.Term {
 		// Increment term, vote for same node as previous term (is this correct?)
-		log.Println("Expired term vote received. New term:", n.Term)
 		n.SetTerm(n.Term+1, n.votedFor)
 		vote = false
+		msg = "Expired term vote received, incrementing term"
 	} else if !n.CheckForeignNode(req.CandidateId, n.otherNodes) {
-		log.Println("Unknown foreign node:", req.CandidateId)
 		vote = false
+		msg = "Unknown foreign node: " + req.CandidateId
 	} else {
-		log.Println("Voting for", req.CandidateId, "for term", req.Term)
+		msg = "Voting"
+		// todo: check candidate's log details
+		vote = true
+
 		n.SetTerm(req.Term, req.CandidateId)
 		if n.State == Leader {
 			n.haltAppend <- true
@@ -412,11 +418,11 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 		n.SetState(Follower)
 		// defer?
 		n.resetElectionTimer()
-
-		// todo: check candidate's log details
-		vote = true
 	}
-	// log.Println("Returning vote: [", status, " ]", vote)
+	log.Info().
+		Int64("Term", n.Term).
+		Bool("Granted", vote).
+		Msg(msg)
 	return &raft.VoteReply{Term: n.Term, VoteGranted: vote}
 }
 
@@ -432,7 +438,7 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 		msg1 := "Append request from LeaderId mismatch for this term. "
 		msg2 := "Got: " + leaderId + " (voted for: " + n.votedFor + "). "
 		msg3 := "Has the configuration changed?"
-		log.Println(msg1 + msg2 + msg3)
+		log.Error().Msg(msg1 + msg2 + msg3)
 		success = false
 	}
 	return success
@@ -456,20 +462,23 @@ func (n *Node) reconcileLogs(body *raft.AppendRequest) {
 		}
 	}
 	if mismatchIdx >= 0 {
-		log.Println("Mismatch index:", mismatchIdx, "- rewinding log")
+		log.Debug().Msgf("Mismatch index: %d - rewinding log", mismatchIdx)
 		n.Log.Entries = n.Log.Entries[:mismatchIdx]
 	}
 	// append any entries not already in log
 	offset := int64(len(n.Log.Entries)) - body.PrevLogIndex - 1
 	newLogs := body.Entries[offset:]
-	log.Println("Appending", len(newLogs), "entries")
+	log.Debug().Msgf("Appending %d entries", len(newLogs))
 	n.Log.Entries = append(n.Log.Entries, newLogs...)
 }
 
 // applyCommittedLogs updates the database with actions that have not yet been
 // applied, up to the new commit index
 func (n *Node) applyCommittedLogs(commitIdx int64) {
-	log.Println("Current commit:", n.commitIndex, "- Leader commit:", commitIdx)
+	log.Debug().
+		Int64("current", n.commitIndex).
+		Int64("leader", commitIdx).
+		Msg("apply commits")
 	if commitIdx > n.commitIndex {
 		// apply all entries up to new commit index to store
 		for i := n.commitIndex; i < commitIdx; i++ {
@@ -487,7 +496,9 @@ func (n *Node) applyCommittedLogs(commitIdx int64) {
 			commitIdx = lastIndex
 		}
 		n.commitIndex = commitIdx
-		log.Println("New commit:", n.commitIndex)
+		log.Debug().
+			Int64("commit", n.commitIndex).
+			Msg("Commit updated")
 	}
 }
 

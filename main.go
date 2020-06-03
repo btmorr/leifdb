@@ -5,7 +5,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/btmorr/leifdb/internal/configuration"
@@ -13,6 +12,7 @@ import (
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raftserver"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 )
 
 // Data types for [un]marshalling JSON
@@ -87,20 +87,20 @@ func buildRouter(n *node.Node) *gin.Engine {
 
 func main() {
 	cfg := configuration.BuildServerConfig()
-	fmt.Printf("Configuration:\n%+v\n", cfg)
+	fmt.Printf("Configuration:\n%+v\n\n", *cfg)
 
 	store := database.NewDatabase()
 	config := node.NewNodeConfig(cfg.DataDir, cfg.RaftAddr)
 	n, err := node.NewNode(config, store)
 	if err != nil {
-		log.Fatal("Failed to initialize node with error:", err)
+		log.Fatal().Err(err).Msg("Failed to initialize node")
 	}
 
 	for _, nodeId := range cfg.ClusterCfg.NodeIds {
 		n.AddForeignNode(nodeId)
 	}
 
-	log.Println("Election timeout: ", n.ElectionTimeout.String())
+	log.Info().Msgf("Election timeout: %s", n.ElectionTimeout.String())
 
 	raftPortString := fmt.Sprintf(":%d", cfg.RaftPort)
 	raftserver.StartRaftServer(raftPortString, n)
