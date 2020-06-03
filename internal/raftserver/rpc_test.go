@@ -40,9 +40,9 @@ func setupServer(t *testing.T) *node.Node {
 	store := db.NewDatabase()
 
 	config := node.NewNodeConfig(testDir, addr)
-	node, _ := node.NewNode(config, store)
-	node.CheckForeignNode = checkForeignNodeMock
-	return node
+	n, _ := node.NewNode(config, store)
+	n.CheckForeignNode = checkForeignNodeMock
+	return n
 }
 
 // CompareLogs traverses a pair of LogStores to check for equality by value
@@ -269,7 +269,7 @@ func TestAppend(t *testing.T) {
 			sendId:          validLeaderId,
 			sendPrevIdx:     prevIdx,
 			sendPrevTerm:    prevTerm,
-			sendCommit:      2,
+			sendCommit:      1,
 			sendRecords:     make([]*raft.LogRecord, 0, 0),
 			expectedSuccess: true,
 			expectedStore:   updatedLog,
@@ -284,7 +284,7 @@ func TestAppend(t *testing.T) {
 			sendId:          validLeaderId,
 			sendPrevIdx:     prevIdx,
 			sendPrevTerm:    prevTerm,
-			sendCommit:      int64(len(updatedLog.Entries)),
+			sendCommit:      int64(len(updatedLog.Entries) - 1),
 			sendRecords:     make([]*raft.LogRecord, 0, 0),
 			expectedSuccess: true,
 			expectedStore:   updatedLog,
