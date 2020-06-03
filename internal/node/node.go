@@ -280,6 +280,7 @@ func (n *Node) startAppendTicker() {
 				return
 			case <-n.appendTicker.C:
 				// placeholder for generating append requests
+				n.doAppend(0)
 				continue
 			}
 		}
@@ -373,11 +374,11 @@ func (n *Node) commitRecords() {
 
 	numNodes := len(n.otherNodes)
 	majority := (numNodes / 2) + 1
-	log.Info().Msgf("Need to apply message to %d nodes", majority)
+	log.Debug().Msgf("Need to apply message to %d nodes", majority)
 
 	// todo: find a more computationally efficient way to compute this
 	lastIdx := int64(len(n.Log.Entries) - 1)
-	log.Info().
+	log.Debug().
 		Int64("lastIndex", lastIdx).
 		Int64("commitIndex", n.commitIndex).
 		Msgf("Checking for update to commit index")
@@ -388,7 +389,7 @@ func (n *Node) commitRecords() {
 				count++
 			}
 		}
-		log.Info().Msgf("Applied to %d nodes", count)
+		log.Debug().Msgf("Applied to %d nodes", count)
 		if count >= majority {
 			log.Info().
 				Int64("prevCommitIndex", n.commitIndex).
@@ -400,7 +401,7 @@ func (n *Node) commitRecords() {
 		lastIdx--
 	}
 	// if any records were committed, apply them to the database
-	log.Info().
+	log.Debug().
 		Int64("lastApplied", n.lastApplied).
 		Msg("Applying records to database")
 	for n.lastApplied < n.commitIndex {
@@ -409,13 +410,13 @@ func (n *Node) commitRecords() {
 		key := n.Log.Entries[n.lastApplied].Key
 		if action == raft.LogRecord_SET {
 			value := n.Log.Entries[n.lastApplied].Value
-			log.Info().
+			log.Debug().
 				Str("key", key).
 				Str("value", value).
 				Msg("Db set")
 			n.Store.Set(key, value)
 		} else if action == raft.LogRecord_DEL {
-			log.Info().
+			log.Debug().
 				Str("key", key).
 				Msg("Db del")
 			n.Store.Delete(key)
@@ -474,7 +475,7 @@ func (n *Node) doAppend(retriesRemaining int) error {
 	numNodes := len(n.otherNodes)
 	majority := (numNodes / 2) + 1
 
-	log.Info().Msgf("Number needed for append: %d", majority)
+	log.Debug().Msgf("Number needed for append: %d", majority)
 
 	numAppended := 1
 	// Send append out to all other nodes with new record(s)
@@ -491,7 +492,7 @@ func (n *Node) doAppend(retriesRemaining int) error {
 		}()
 
 	}
-	log.Info().Msgf("Appended to %d nodes", numAppended)
+	log.Debug().Msgf("Appended to %d nodes", numAppended)
 	if numAppended >= majority {
 		// update commit index on this node and apply newly committed records
 		// to the database (next automatic append will commit on other nodes)
