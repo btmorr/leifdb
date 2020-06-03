@@ -51,11 +51,14 @@ func buildRouter(n *node.Node) *gin.Engine {
 
 		var body WriteBody
 		if err := c.ShouldBindJSON(&body); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.String(http.StatusBadRequest, err.Error())
 			return
 		}
-		// todo: replace this with log-append once commit logic is in place
-		n.Store.Set(key, body.Value)
+
+		if err := n.Set(key, body.Value); err != nil {
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
 
 		status := http.StatusOK
 		c.String(status, "Ok")
@@ -64,8 +67,11 @@ func buildRouter(n *node.Node) *gin.Engine {
 	// Handler for database deletes (DELETE /db/:key)
 	handleDelete := func(c *gin.Context) {
 		key := c.Param("key")
-		// todo: replace this with log-append once commit logic is in place
-		n.Store.Delete(key)
+
+		if err := n.Delete(key); err != nil {
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
 
 		status := http.StatusOK
 		c.String(status, "Ok")
@@ -92,7 +98,7 @@ func buildRouter(n *node.Node) *gin.Engine {
 // associated imports ("github.com/rs/zerolog", and "os")
 func init() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{
-		Out:        os.Stderr,
+		Out:        os.Stdout,
 		TimeFormat: time.RFC3339})
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 }

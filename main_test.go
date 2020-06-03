@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -33,9 +34,10 @@ func setupServer(t *testing.T) (*gin.Engine, *node.Node) {
 	store := db.NewDatabase()
 
 	config := node.NewNodeConfig(testDir, addr)
-	node, _ := node.NewNode(config, store)
-	router := buildRouter(node)
-	return router, node
+	n, _ := node.NewNode(config, store)
+	router := buildRouter(n)
+	n.DoElection()
+	return router, n
 }
 
 func TestHealthRoute(t *testing.T) {
@@ -64,6 +66,8 @@ func TestReadAfterWrite(t *testing.T) {
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/db/stuff", br1)
 	router.ServeHTTP(w, req)
+
+	fmt.Printf("Response: %+v\n", w)
 
 	if w.Code != http.StatusOK {
 		t.Error("Non-200 health status in POST:", w.Code)

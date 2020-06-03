@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -15,11 +16,27 @@ import (
 	"google.golang.org/grpc"
 )
 
+var (
+	// ErrNotLeader indicates that a client attempted to make a write to a node
+	// that is not currently the leader of the cluster
+	ErrNotLeader = errors.New("Cannot accept writes if not leader")
+
+	// ErrAppendFailed indicates that an append job ran out of retry attempts
+	// without successfully appending to a majorit of nodes
+	ErrAppendFailed = errors.New("Failed to append logs to a majority of nodes")
+
+	// ErrCommitFailed indicates that the leader's commit index after append
+	// is less than the index of the record being added
+	ErrCommitFailed = errors.New("Failed to commit record")
+)
+
 // A ForeignNode is another member of the cluster, with connections needed
 // to manage gRPC interaction with that node
 type ForeignNode struct {
 	Connection *grpc.ClientConn
 	Client     raft.RaftClient
+	NextIndex  int64
+	MatchIndex int64
 }
 
 // NewForeignNode constructs a ForeignNode from an address ("host:port")
@@ -31,7 +48,11 @@ func NewForeignNode(address string) (*ForeignNode, error) {
 	}
 	client := raft.NewRaftClient(conn)
 
-	return &ForeignNode{Connection: conn, Client: client}, err
+	return &ForeignNode{
+		Connection: conn,
+		Client:     client,
+		NextIndex:  1,
+		MatchIndex: 0}, err
 }
 
 // Close cleans up the gRPC connection with the foreign node
@@ -82,16 +103,12 @@ type Node struct {
 	votedFor         string
 	otherNodes       map[string]*ForeignNode
 	CheckForeignNode ForeignNodeChecker
-	nextIndex        map[string]int64
-	matchIndex       map[string]int64
 	commitIndex      int64
 	lastApplied      int64
 	Log              *raft.LogStore
 	config           NodeConfig
 	Store            *db.Database
 }
-
-// Client methods for managing raft state
 
 // Non-volatile state functions
 // `Term`, `votedFor`, and `Log` must persist through application restart, so
@@ -130,8 +147,8 @@ func ReadTerm(filename string) *raft.TermRecord {
 	return record
 }
 
-// SetTerm records term and vote in non-volatile state
-func (n *Node) SetTerm(newTerm int64, votedFor string) error {
+// setTerm records term and vote in non-volatile state
+func (n *Node) setTerm(newTerm int64, votedFor string) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
 	vote := &raft.TermRecord{
@@ -169,24 +186,82 @@ func ReadLogs(filename string) *raft.LogStore {
 	return logStore
 }
 
-// SetLog records new log contents in non-volatile state
-func (n *Node) SetLog(newLog []*raft.LogRecord) error {
-	record := &raft.LogStore{Entries: newLog}
+// setLog records new log contents in non-volatile state, and returns the index
+// of the record in the log, or an error
+func (n *Node) setLog(newLogs []*raft.LogRecord) (int64, error) {
+	record := &raft.LogStore{Entries: newLogs}
+	idx := int64(len(record.Entries) - 1)
 	err := WriteLogs(n.config.LogFile, record)
 	if err == nil {
 		n.Log = record
 	}
+	return idx, err
+}
+
+// applyRecord adds a new record to the log, then sends an append-logs request
+// to other nodes in the cluster. This method does not return until either the
+// log is successfully committed to a majority of nodes, or a majority of
+// nodes fail via explicit rejection or timeout (which should generally result
+// in an election)
+func (n *Node) applyRecord(record *raft.LogRecord) error {
+	if n.State != Leader {
+		return ErrNotLeader
+	}
+	newEntries := append(n.Log.Entries, record)
+	idx, err := n.setLog(newEntries)
+	if err != nil {
+		log.Error().Err(err).Msg("AddLog: Error setting log")
+		return err
+	}
+	// Try appending logs to other nodes, with 3 retries
+	err = n.doAppend(3)
+	if err != nil {
+		log.Error().Err(err).Msg("AddLog: Error shipping log")
+		return err
+	}
+	// verify that n.commitIndex >= idx
+	if n.commitIndex < idx {
+		log.Error().Err(ErrCommitFailed).
+			Int64("recordIndex", idx).
+			Int64("commitIndex", n.commitIndex).
+			Msg("Commit index failed to update after append")
+		return ErrCommitFailed
+	}
+	// return once entry is applied to state machine or error
 	return err
+}
+
+// Client methods for managing raft state
+
+// Set appends a write entry to the log record, and returns once the update is
+// applied to the state machine or an error is generated
+func (n *Node) Set(key string, value string) error {
+	record := &raft.LogRecord{
+		Term:   n.Term,
+		Action: raft.LogRecord_SET,
+		Key:    key,
+		Value:  value}
+	return n.applyRecord(record)
+}
+
+// Delete appends a delete entry to the log record, and returns once the update
+// is applied to the state machine or an error is generated
+func (n *Node) Delete(key string) error {
+	record := &raft.LogRecord{
+		Term:   n.Term,
+		Action: raft.LogRecord_DEL,
+		Key:    key}
+	return n.applyRecord(record)
 }
 
 // Volatile state functions
 // Other state should not be written to disk, and should be re-initialized on
 // restart, but may have other side-effects that happen on state change
 
-// SetState designates the Node as one of the roles in the role enumeration,
+// setState designates the Node as one of the roles in the role enumeration,
 // and handles any side-effects that should happen specifically on state
 // transition
-func (n *Node) SetState(newState Role) {
+func (n *Node) setState(newState Role) {
 	n.State = newState
 	// todo: move starting/stopping election timer and append ticker here
 }
@@ -227,6 +302,7 @@ func (n *Node) requestVote(host string) (bool, error) {
 		log.Error().Err(err).Msgf("Error requesting vote from %sv", host)
 	}
 
+	// is this access safe?
 	return vote.VoteGranted, err
 }
 
@@ -240,9 +316,9 @@ func (n *Node) requestVote(host string) (bool, error) {
 // is elected).
 func (n *Node) DoElection() {
 	log.Trace().Msg("Starting Election")
-	n.SetState(Candidate)
+	n.setState(Candidate)
 
-	n.SetTerm(n.Term+1, n.NodeId)
+	n.setTerm(n.Term+1, n.NodeId)
 
 	numNodes := len(n.otherNodes)
 	majority := (numNodes / 2) + 1
@@ -256,9 +332,9 @@ func (n *Node) DoElection() {
 	n.resetElectionTimer()
 	numVotes := 1
 	for k := range n.otherNodes {
-		_, err := n.requestVote(k)
+		vote, err := n.requestVote(k)
 		log.Trace().Msg("got a vote")
-		if err == nil {
+		if err == nil && vote {
 			log.Trace().Msg("it's a 'yay'")
 			numVotes = numVotes + 1
 		}
@@ -268,7 +344,7 @@ func (n *Node) DoElection() {
 		Int("got", numVotes)
 	if numVotes >= majority {
 		voteLog.Bool("success", true).Msg("Election succeeded")
-		n.SetState(Leader)
+		n.setState(Leader)
 		log.Trace().Msg("Becoming leader")
 
 		n.electionTimer.Stop()
@@ -277,12 +353,158 @@ func (n *Node) DoElection() {
 		default:
 		}
 		log.Debug().Msg("Stopping election timer, starting append ticker")
+		for k := range n.otherNodes {
+			n.otherNodes[k].MatchIndex = -1
+			n.otherNodes[k].NextIndex = int64(len(n.Log.Entries))
+		}
 		n.startAppendTicker()
 	} else {
 		voteLog.Bool("success", false).Msg("Election failed")
-		n.SetState(Follower)
+		n.setState(Follower)
 		log.Trace().Msg("Becoming follower")
 	}
+}
+
+// commitRecords iterates backward from last index of log entries, and finds
+// latest index that has been appended to a majority of nodes, and updates
+// the database and node commitIndex
+func (n *Node) commitRecords() {
+	log.Trace().Msg("commitRecords")
+
+	numNodes := len(n.otherNodes)
+	majority := (numNodes / 2) + 1
+	log.Info().Msgf("Need to apply message to %d nodes", majority)
+
+	// todo: find a more computationally efficient way to compute this
+	lastIdx := int64(len(n.Log.Entries) - 1)
+	log.Info().
+		Int64("lastIndex", lastIdx).
+		Int64("commitIndex", n.commitIndex).
+		Msgf("Checking for update to commit index")
+	for lastIdx > n.commitIndex {
+		count := 1
+		for k := range n.otherNodes {
+			if n.otherNodes[k].MatchIndex >= lastIdx {
+				count++
+			}
+		}
+		log.Info().Msgf("Applied to %d nodes", count)
+		if count >= majority {
+			log.Info().
+				Int64("prevCommitIndex", n.commitIndex).
+				Int64("newCommitIndex", lastIdx).
+				Msgf("Updated commit index")
+			n.commitIndex = lastIdx
+			break
+		}
+		lastIdx--
+	}
+	// if any records were committed, apply them to the database
+	log.Info().
+		Int64("lastApplied", n.lastApplied).
+		Msg("Applying records to database")
+	for n.lastApplied < n.commitIndex {
+		n.lastApplied++
+		action := n.Log.Entries[n.lastApplied].Action
+		key := n.Log.Entries[n.lastApplied].Key
+		if action == raft.LogRecord_SET {
+			value := n.Log.Entries[n.lastApplied].Value
+			log.Info().
+				Str("key", key).
+				Str("value", value).
+				Msg("Db set")
+			n.Store.Set(key, value)
+		} else if action == raft.LogRecord_DEL {
+			log.Info().
+				Str("key", key).
+				Msg("Db del")
+			n.Store.Delete(key)
+		}
+	}
+}
+
+// requestAppend sends append to one other node with new record(s) and updates
+// match index for that node if successful
+func (n *Node) requestAppend(host string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*50)
+	defer cancel()
+
+	prevLogIndex := n.otherNodes[host].MatchIndex
+	// make a slice of all entries the other node has not seen (right after
+	// election, this will be all records--would it be better to query for
+	// number of entries in other node's log and start there? or is it better
+	// to deal with this via reasonable log-compaction limits? (need to figure
+	// out the relationship between log size and message size and make a
+	// reasonable speculation about desired max message size)
+	idx := int64(len(n.Log.Entries))
+	newEntries := n.Log.Entries[prevLogIndex+1 : idx]
+	prevLogTerm := n.Log.Entries[prevLogIndex].Term
+
+	req := &raft.AppendRequest{
+		Term:         n.Term,
+		LeaderId:     n.NodeId,
+		PrevLogIndex: prevLogIndex,
+		PrevLogTerm:  prevLogTerm,
+		Entries:      newEntries,
+		LeaderCommit: n.commitIndex}
+
+	reply, err := n.otherNodes[host].Client.AppendLogs(ctx, req)
+	if err == nil {
+		if reply.Success {
+			n.otherNodes[host].MatchIndex = idx
+			n.otherNodes[host].NextIndex = idx + 1
+		} else {
+			n.otherNodes[host].MatchIndex--
+			// todo: would it be viable for AppendReply to include the other
+			// node's log index, so this could fast-forward to the correct
+			// index, rather than recursing possibly down the whole list?
+			// This implementation will blow the stack fast with any kind of
+			// realistic history when you add a fresh node
+			return n.requestAppend(host)
+		}
+	}
+	return err
+}
+
+// doAppend sends out append-logs requests to each other node in the cluster,
+// and updates database state on majority success
+func (n *Node) doAppend(retriesRemaining int) error {
+	log.Trace().Msgf("doAppend(r%d)", retriesRemaining)
+
+	numNodes := len(n.otherNodes)
+	majority := (numNodes / 2) + 1
+
+	log.Info().Msgf("Number needed for append: %d", majority)
+
+	numAppended := 1
+	// Send append out to all other nodes with new record(s)
+	for k := range n.otherNodes {
+		// append new entries
+		// update indicies
+		go func() {
+			err := n.requestAppend(k)
+			if err != nil {
+				log.Error().Err(err).Msgf("Error requesting append from %s", k)
+			} else {
+				numAppended++
+			}
+		}()
+
+	}
+	log.Info().Msgf("Appended to %d nodes", numAppended)
+	if numAppended >= majority {
+		// update commit index on this node and apply newly committed records
+		// to the database (next automatic append will commit on other nodes)
+		n.commitRecords()
+	} else {
+		// did not get a majority
+		if retriesRemaining > 0 {
+			return n.doAppend(retriesRemaining - 1)
+		} else {
+			return ErrAppendFailed
+		}
+	}
+	return nil
 }
 
 // NewNodeConfig creates a config for a Node
@@ -334,10 +556,8 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		votedFor:         termRecord.VotedFor,
 		otherNodes:       make(map[string]*ForeignNode),
 		CheckForeignNode: checkForeignNode,
-		nextIndex:        make(map[string]int64),
-		matchIndex:       make(map[string]int64),
-		commitIndex:      0,
-		lastApplied:      0,
+		commitIndex:      -1,
+		lastApplied:      -1,
 		Log:              logStore,
 		config:           config,
 		Store:            store}
@@ -398,7 +618,7 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 	var msg string
 	if req.Term <= n.Term {
 		// Increment term, vote for same node as previous term (is this correct?)
-		n.SetTerm(n.Term+1, n.votedFor)
+		n.setTerm(n.Term+1, n.votedFor)
 		vote = false
 		msg = "Expired term vote received, incrementing term"
 	} else if !n.CheckForeignNode(req.CandidateId, n.otherNodes) {
@@ -409,11 +629,11 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 		// todo: check candidate's log details
 		vote = true
 
-		n.SetTerm(req.Term, req.CandidateId)
+		n.setTerm(req.Term, req.CandidateId)
 		if n.State == Leader {
 			n.haltAppend <- true
 		}
-		n.SetState(Follower)
+		n.setState(Follower)
 		// defer?
 		n.resetElectionTimer()
 	}
@@ -478,22 +698,25 @@ func (n *Node) applyCommittedLogs(commitIdx int64) {
 		Int64("leader", commitIdx).
 		Msg("apply commits")
 	if commitIdx > n.commitIndex {
+		// ensure we don't run over the end of the log
+		lastIndex := int64(len(n.Log.Entries))
+		if commitIdx > lastIndex {
+			commitIdx = lastIndex
+		}
+
 		// apply all entries up to new commit index to store
-		for i := n.commitIndex; i < commitIdx; i++ {
-			action := n.Log.Entries[i].Action
-			key := n.Log.Entries[i].Key
+		for n.commitIndex < commitIdx {
+			n.commitIndex++
+			action := n.Log.Entries[n.commitIndex].Action
+			key := n.Log.Entries[n.commitIndex].Key
 			if action == raft.LogRecord_SET {
-				value := n.Log.Entries[i].Value
+				value := n.Log.Entries[n.commitIndex].Value
 				n.Store.Set(key, value)
 			} else if action == raft.LogRecord_DEL {
 				n.Store.Delete(key)
 			}
 		}
-		lastIndex := int64(len(n.Log.Entries))
-		if commitIdx > lastIndex {
-			commitIdx = lastIndex
-		}
-		n.commitIndex = commitIdx
+
 		log.Debug().
 			Int64("commit", n.commitIndex).
 			Msg("Commit updated")
@@ -529,7 +752,7 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 	if valid {
 		// For any valid append received during an election, cancel election
 		if n.State != Follower {
-			n.SetState(Follower)
+			n.setState(Follower)
 		}
 		// only reset the election timer on append from a valid leader
 		// defer?
