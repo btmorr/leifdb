@@ -116,7 +116,7 @@ func main() {
 	log.Info().Msgf("Election timeout: %s", n.ElectionTimeout.String())
 
 	raftPortString := fmt.Sprintf(":%d", cfg.RaftPort)
-	raftserver.StartRaftServer(raftPortString, n)
+	go raftserver.StartRaftServer(raftPortString, n)
 	router := buildRouter(n)
 	router.Run()
 }

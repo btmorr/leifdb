@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -206,7 +205,6 @@ func (n *Node) startAppendTicker() {
 				return
 			case <-n.appendTicker.C:
 				// placeholder for generating append requests
-				fmt.Print(".")
 				continue
 			}
 		}
