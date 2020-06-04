@@ -4,7 +4,9 @@
 [![License][license-badge]][license]
 [![Build Status][build-badge]][build]
 
-This is an attempt to create a clustered K-V store application that implements [Raft] for consistency, in Go, based on the [short Raft paper]--something along the lines of [etcd], which backs [Kubernetes]; [Consul], which backs [Vault] and other HashiCorp tools; or [ZooKeeper], which backs most Hadoop-related projects. (etcd and Consul use Raft, ZooKeeper uses a similar algorithm called [Zab], and there are others that use other algorithms such as [Paxos])
+LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go, based on the [short Raft paper
+
+The aim of this project is to build a distributed, consistent, fault-tolerant database along the lines of [etcd], which backs [Kubernetes]; [Consul], which backs [Vault] and other HashiCorp tools; or [ZooKeeper], which backs most Hadoop-related projects. (etcd and Consul use Raft, ZooKeeper uses a similar algorithm called [Zab], and there are others that use other algorithms such as [Paxos])
 
 Contributions are welcome! Check out the [Contributing Guide] for more info on how to make feature requests, subtmit bug reports, or create pull requests.
 
@@ -138,6 +140,41 @@ configuration:
         port: 16992
 ```
 
+To run a cluster on one machine, make 3 directories, and put a copy of the configuration above into each directory (using "/data/a", "/data/b", and "/data/c" for examples below--replace with your chosen directories). Replace "localhost" with your computer's preferred IP (can get it from `ifconfig` on Unix/Linux or `ipconfig` on Windows, or from an error message by running a server with the config file as written--better methods forthcoming). Then open three terminal windows and execute these in each:
+
+```
+PORT=8080 ./app -raftport 16990 -data /data/a
+```
+
+```
+PORT=8081 ./app -raftport 16991 -data /data/b
+```
+
+```
+PORT=8082 ./app -raftport 16992 -data /data/c
+```
+
+(keep track of which window is which, since you'll need to figure out what the ports are for the one that becomes the leader, but you generally can't control which one it will be)
+
+The output will have a *lot* of chatter (unless you change the log level in the `init` function in "main.go"), but should reach a steady state where one of the nodes is the leader. The leader node will be logging a stream of messages like:
+
+```
+2020-06-04T07:40:16-04:00 DBG Number needed for append: 2
+2020-06-04T07:40:16-04:00 DBG Appended to 3 nodes
+2020-06-04T07:40:16-04:00 DBG Need to apply message to 2 nodes
+2020-06-04T07:40:16-04:00 DBG Checking for update to commit index commitIndex=1 lastIndex=1
+2020-06-04T07:40:16-04:00 DBG Applying records to database lastApplied=1
+```
+
+Follower nodes will be streaming messages like:
+
+```
+2020-06-04T07:40:16-04:00 DBG apply commits current=1 leader=1
+2020-06-04T07:40:16-04:00 DBG Received append request: term:105 leaderId:"192.168.1.21:16991" prevLogIndex:1 prevLogTerm:97 leaderCommit:1
+```
+
+Determine which ports correspond to the leader (let's say it's the one with an HTTP service bound to port 8080), then you can issue writes to the leader node, followed by reads to any node. See [#database-requests] for writing read/write requests.
+
 ## Endpoints
 
 ### Database requests
@@ -177,7 +214,6 @@ Currently, the return code of this endpoint is the main indicator of health (200
 ## Todo
 
 Raft basics (everything from the [short Raft paper]):
-- leader keep track of log index for each other node, send append-logs requests to each based on last known log index, and update commit index for logs appended to a majority of nodes
 - add log comparison check to vote handler (election restriction)
 - add more checking on most recently seen term
 

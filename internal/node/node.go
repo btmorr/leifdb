@@ -685,7 +685,7 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 	if term < n.Term {
 		success = false
 	}
-	if leaderId != n.votedFor {
+	if term == n.Term && leaderId != n.votedFor {
 		msg1 := "Append request from LeaderId mismatch for this term. "
 		msg2 := "Got: " + leaderId + " (voted for: " + n.votedFor + "). "
 		msg3 := "Has the configuration changed?"
