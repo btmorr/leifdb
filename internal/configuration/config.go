@@ -64,7 +64,7 @@ type ServerConfig struct {
 	DataDir    string
 	RaftPort   int
 	RaftAddr   string
-	CleintPort int
+	ClientPort int
 	ClientAddr string
 	Mode       ClusterMode
 	NodeIds    []string
@@ -164,7 +164,7 @@ func BuildServerConfig() *ServerConfig {
 		DataDir:    dataDir,
 		RaftPort:   raftPort,
 		RaftAddr:   raftAddr,
-		CleintPort: clientPort,
+		ClientPort: clientPort,
 		ClientAddr: clientAddr,
 		Mode:       ccfg.Mode,
 		NodeIds:    ccfg.NodeIds}

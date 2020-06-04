@@ -1,3 +1,7 @@
+version = $(shell bash ./version.sh)
+run_opts ?=
+binary_prefix = leifdb-
+
 .PHONY: test
 test: app
 	go test -coverprofile=coverage.out ./...
@@ -8,12 +12,13 @@ viewcoverage: coverage.out
 .PHONY: clean
 clean:
 	go clean
-	rm ./app || true
+	rm ./$(binary_prefix)* || true
 
+.PHONY: app
 app: clean
 	gofmt -w -s .
 	go fix
-	go build -o app
+	go build -o $(binary_prefix)$(version)
 
 .PHONY: protobuf
 protobuf:
@@ -21,3 +26,7 @@ protobuf:
 	mkdir -p ./internal/raft
 	cp ./github.com/btmorr/leifdb/internal/raft/* ./internal/raft/
 	rm -rf ./github.com
+
+.PHONY: run
+run: leifdb-$(version)
+	./leifdb-$(version) $(run_opts)
