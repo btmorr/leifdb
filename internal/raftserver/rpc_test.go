@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
 	"testing"
 	"time"
 
@@ -44,71 +43,6 @@ func setupServer(t *testing.T) *node.Node {
 	n, _ := node.NewNode(config, store)
 	n.CheckForeignNode = checkForeignNodeMock
 	return n
-}
-
-func TestPersistence(t *testing.T) {
-	log.Println("~~~ TestPersistence")
-
-	addr := "localhost:8080"
-
-	testDir, _ := util.CreateTmpDir(".tmp-leifdb")
-	t.Cleanup(func() {
-		util.RemoveTmpDir(testDir)
-	})
-
-	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
-
-	termRecord := &raft.TermRecord{Term: 5, VotedFor: "localhost:8181"}
-	node.WriteTerm(config.TermFile, termRecord)
-
-	termData := node.ReadTerm(config.TermFile)
-	if termData.Term != termRecord.Term {
-		t.Error("Term data file roundtrip incorrect term:", termData.Term)
-	}
-	if termData.VotedFor != termRecord.VotedFor {
-		t.Error("Term data file roundtrip incorrect vote:", termData.VotedFor)
-	}
-
-	logCache := &raft.LogStore{
-		Entries: []*raft.LogRecord{
-			{
-				Term:   1,
-				Action: raft.LogRecord_SET,
-				Key:    "test",
-				Value:  "run"},
-			{
-				Term:   2,
-				Action: raft.LogRecord_SET,
-				Key:    "other",
-				Value:  "questions"},
-			{
-				Term:   3,
-				Action: raft.LogRecord_SET,
-				Key:    "stuff",
-				Value:  "there"}}}
-
-	err := node.WriteLogs(config.LogFile, logCache)
-	if err != nil {
-		t.Error("Log write failure:", err)
-	}
-	_, err2 := os.Stat(config.LogFile)
-	if err2 != nil {
-		t.Error("LogFile does not exist after write:", err)
-	}
-	roundtrip := node.ReadLogs(config.LogFile)
-
-	testutil.CompareLogs(t, "Roundtrip", roundtrip, logCache)
-
-	store := db.NewDatabase()
-	n, _ := node.NewNode(config, store)
-
-	n.Halt()
-
-	if n.Term != 5 {
-		t.Error("Term not loaded correctly. Found term: ", n.Term)
-	}
-
-	testutil.CompareLogs(t, "Node load", n.Log, logCache)
 }
 
 type appendTestCase struct {

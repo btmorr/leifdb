@@ -47,15 +47,14 @@ type ForeignNode struct {
 
 // NewForeignNode constructs a ForeignNode from an address ("host:port")
 func NewForeignNode(address string) (*ForeignNode, error) {
-	log.Trace().Msg("new foreign node")
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithTimeout(time.Second))
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to connect to %s", address)
 		return nil, err
 	}
-	log.Trace().Msg("aaa")
+
 	client := raft.NewRaftClient(conn)
-	log.Trace().Msg("bbb")
+
 	return &ForeignNode{
 		Connection: conn,
 		Client:     client,
@@ -573,7 +572,7 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		Str("Vote", termRecord.VotedFor).
 		Int("nLogs", len(logStore.Entries)).
 		Msg("On load")
-	fmt.Println("----> a")
+
 	n := Node{
 		NodeId:           config.Id,
 		ElectionTimeout:  electionTimeout,
@@ -591,18 +590,16 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		Log:              logStore,
 		config:           config,
 		Store:            store}
-	fmt.Println("----> b")
+
 	for _, addr := range config.NodeIds {
-		fmt.Println("----> c:", addr)
 		n.AddForeignNode(addr)
 	}
-	fmt.Println("----> d")
+
 	go func() {
 		log.Trace().Msg("First election timer")
 		<-n.electionTimer.C
 		n.DoElection()
 	}()
-	fmt.Println("----> e")
 
 	return &n, nil
 }

@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"log"
+	"os"
 	"testing"
 
 	db "github.com/btmorr/leifdb/internal/database"
@@ -48,6 +49,71 @@ func setupNode(t *testing.T) *Node {
 	n, _ := NewNode(config, store)
 	n.CheckForeignNode = checkForeignNodeMock
 	return n
+}
+
+func TestPersistence(t *testing.T) {
+	log.Println("~~~ TestPersistence")
+
+	addr := "localhost:8080"
+
+	testDir, _ := util.CreateTmpDir(".tmp-leifdb")
+	t.Cleanup(func() {
+		util.RemoveTmpDir(testDir)
+	})
+
+	config := NewNodeConfig(testDir, addr, make([]string, 0, 0))
+
+	termRecord := &raft.TermRecord{Term: 5, VotedFor: "localhost:8181"}
+	WriteTerm(config.TermFile, termRecord)
+
+	termData := ReadTerm(config.TermFile)
+	if termData.Term != termRecord.Term {
+		t.Error("Term data file roundtrip incorrect term:", termData.Term)
+	}
+	if termData.VotedFor != termRecord.VotedFor {
+		t.Error("Term data file roundtrip incorrect vote:", termData.VotedFor)
+	}
+
+	logCache := &raft.LogStore{
+		Entries: []*raft.LogRecord{
+			{
+				Term:   1,
+				Action: raft.LogRecord_SET,
+				Key:    "test",
+				Value:  "run"},
+			{
+				Term:   2,
+				Action: raft.LogRecord_SET,
+				Key:    "other",
+				Value:  "questions"},
+			{
+				Term:   3,
+				Action: raft.LogRecord_SET,
+				Key:    "stuff",
+				Value:  "there"}}}
+
+	err := WriteLogs(config.LogFile, logCache)
+	if err != nil {
+		t.Error("Log write failure:", err)
+	}
+	_, err2 := os.Stat(config.LogFile)
+	if err2 != nil {
+		t.Error("LogFile does not exist after write:", err)
+	}
+	roundtrip := ReadLogs(config.LogFile)
+
+	testutil.CompareLogs(t, "Roundtrip", roundtrip, logCache)
+
+	store := db.NewDatabase()
+	n, _ := NewNode(config, store)
+
+	n.Halt()
+
+	if n.Term != 5 {
+		t.Error("Term not loaded correctly. Found term: ", n.Term)
+	}
+
+	testutil.CompareLogs(t, "Node load", n.Log, logCache)
 }
 
 type ReconcileTestCase struct {

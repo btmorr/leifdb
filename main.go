@@ -96,11 +96,12 @@ func buildRouter(n *node.Node) *gin.Engine {
 
 // For more human-readable logs, uncomment the following function and add the
 // associated imports ("github.com/rs/zerolog", and "os")
+// todo: make this configurable
 func init() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{
 		Out:        os.Stdout,
 		TimeFormat: time.RFC3339})
-	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 }
 
 func main() {
