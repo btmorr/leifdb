@@ -7,6 +7,7 @@ import (
 
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/raft"
+	"github.com/btmorr/leifdb/internal/testutil"
 	"github.com/btmorr/leifdb/internal/util"
 	"google.golang.org/grpc"
 )
@@ -49,9 +50,108 @@ func setupNode(t *testing.T) *Node {
 	return n
 }
 
-func TestAddNewLog(t *testing.T) {
-	n := setupNode(t)
-	// Simulating node in leader position, rather than adding a time.Sleep
-	n.DoElection()
-
+type ReconcileTestCase struct {
+	Name     string
+	Store    *raft.LogStore
+	Request  *raft.AppendRequest
+	Expected *raft.LogStore
 }
+
+func TestReconcileLogs(t *testing.T) {
+	emptyLog := &raft.LogStore{
+		Entries: make([]*raft.LogRecord, 0, 0)}
+
+	firstThree := []*raft.LogRecord{
+		{
+			Term:   1,
+			Action: raft.LogRecord_SET,
+			Key:    "Harry",
+			Value:  "present"},
+		{
+			Term:   2,
+			Action: raft.LogRecord_SET,
+			Key:    "Ron",
+			Value:  "absent"},
+		{
+			Term:   3,
+			Action: raft.LogRecord_SET,
+			Key:    "Hermione",
+			Value:  "present"}}
+
+	starterLog := &raft.LogStore{
+		Entries: firstThree}
+
+	nextTwo := []*raft.LogRecord{
+		{
+			Term:   5,
+			Action: raft.LogRecord_DEL,
+			Key:    "Harry"},
+		{
+			Term:   6,
+			Action: raft.LogRecord_DEL,
+			Key:    "Ron"}}
+
+	appendLog := &raft.LogStore{
+		Entries: append(firstThree, nextTwo...)}
+
+	overlapLog := &raft.LogStore{
+		Entries: append(firstThree[:2], nextTwo...)}
+
+	testCases := []ReconcileTestCase{
+		{
+			Name:  "Empty mind, empty body",
+			Store: emptyLog,
+			Request: &raft.AppendRequest{
+				Term:         0,
+				LeaderId:     "localhost:8181",
+				PrevLogIndex: -1,
+				PrevLogTerm:  -1,
+				LeaderCommit: -1,
+				Entries:      []*raft.LogRecord{}},
+			Expected: emptyLog},
+		{
+			Name:  "Empty mind, full body",
+			Store: emptyLog,
+			Request: &raft.AppendRequest{
+				Term:         5,
+				LeaderId:     "localhost:8181",
+				PrevLogIndex: -1,
+				PrevLogTerm:  -1,
+				LeaderCommit: -1,
+				Entries:      firstThree},
+			Expected: starterLog},
+		{
+			Name:  "Full mind, full body",
+			Store: starterLog,
+			Request: &raft.AppendRequest{
+				Term:         6,
+				LeaderId:     "localhost:8181",
+				PrevLogIndex: 2,
+				PrevLogTerm:  3,
+				LeaderCommit: -1,
+				Entries:      nextTwo},
+			Expected: appendLog},
+		{
+			Name:  "Incongruous mind",
+			Store: starterLog,
+			Request: &raft.AppendRequest{
+				Term:         6,
+				LeaderId:     "localhost:8181",
+				PrevLogIndex: 1,
+				PrevLogTerm:  2,
+				LeaderCommit: -1,
+				Entries:      nextTwo},
+			Expected: overlapLog}}
+
+	for _, tc := range testCases {
+		result := reconcileLogs(tc.Store, tc.Request)
+		testutil.CompareLogs(t, tc.Name, result, tc.Expected)
+	}
+}
+
+// func TestAddNewLog(t *testing.T) {
+// 	n := setupNode(t)
+// 	// Simulating node in leader position, rather than adding a time.Sleep
+// 	n.DoElection()
+
+// }

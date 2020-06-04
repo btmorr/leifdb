@@ -701,30 +701,30 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 
 // If an existing entry conflicts with a new one (same idx diff term),
 // reconcileLogs deletes the existing entry and any that follow
-func (n *Node) reconcileLogs(body *raft.AppendRequest) {
+func reconcileLogs(logStore *raft.LogStore, body *raft.AppendRequest) *raft.LogStore {
 	// note: don't memoize length of Entries, it changes multiple times
 	// during this method--safer to recalculate, and memoizing would
 	// only save a maximum of one pass so it's not worth it
 	var mismatchIdx int64
 	mismatchIdx = -1
-	if body.PrevLogIndex < int64(len(n.Log.Entries)) {
-		overlappingEntries := n.Log.Entries[body.PrevLogIndex:]
+	if body.PrevLogIndex < int64(len(logStore.Entries)-1) {
+		overlappingEntries := logStore.Entries[body.PrevLogIndex+1:]
 		for i, rec := range overlappingEntries {
 			if rec.Term != body.Entries[i].Term {
-				mismatchIdx = body.PrevLogIndex + int64(i)
+				mismatchIdx = body.PrevLogIndex + 1 + int64(i)
 				break
 			}
 		}
 	}
 	if mismatchIdx >= 0 {
 		log.Debug().Msgf("Mismatch index: %d - rewinding log", mismatchIdx)
-		n.Log.Entries = n.Log.Entries[:mismatchIdx]
+		logStore.Entries = logStore.Entries[:mismatchIdx]
 	}
 	// append any entries not already in log
-	offset := int64(len(n.Log.Entries)) - body.PrevLogIndex - 1
+	offset := int64(len(logStore.Entries)-1) - body.PrevLogIndex
 	newLogs := body.Entries[offset:]
 	log.Debug().Msgf("Appending %d entries", len(newLogs))
-	n.Log.Entries = append(n.Log.Entries, newLogs...)
+	return &raft.LogStore{Entries: append(logStore.Entries, newLogs...)}
 }
 
 // applyCommittedLogs updates the database with actions that have not yet been
@@ -784,7 +784,7 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 	} else {
 		// Valid request, and all required logs present
 		if len(req.Entries) > 0 {
-			n.reconcileLogs(req)
+			n.Log = reconcileLogs(n.Log, req)
 		}
 		n.applyCommittedLogs(req.LeaderCommit)
 		success = true
