@@ -105,7 +105,7 @@ func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
 				subv := viper.Sub(s)
 				addr := subv.GetString("host")
 				port := subv.GetInt("port")
-				fmt.Printf("%s at %s:%d\n", s, addr, port)
+				// fmt.Printf("%s at %s:%d\n", s, addr, port)
 				nodeId := fmt.Sprintf("%s:%d", addr, port)
 				if nodeId != raftAddr {
 					// Don't include self in `otherNodes`
@@ -115,7 +115,6 @@ func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
 				}
 			}
 			if !selfInConfig {
-				fmt.Println("Self:", raftAddr)
 				panic(ErrSelfNotInConfig)
 			}
 		} // else single node configuration
@@ -140,10 +139,6 @@ func BuildServerConfig() *ServerConfig {
 	raftPort := *raftPortP
 	clientPort := *clientPortP
 
-	fmt.Println("DataDir: ", dataDir)
-	fmt.Println("RaftPort:", raftPort)
-	fmt.Println("HttpPort:", clientPort)
-
 	ip := GetOutboundIP()
 
 	raftAddr := fmt.Sprintf("%s:%d", ip, raftPort)
@@ -161,8 +156,6 @@ func BuildServerConfig() *ServerConfig {
 	if err2 != nil {
 		panic(err2)
 	}
-
-	fmt.Println("DataDir2:", dataDir)
 
 	ccfg := buildClusterConfig(dataDir, raftAddr)
 
