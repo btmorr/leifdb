@@ -179,7 +179,7 @@ func TestReconcileLogs(t *testing.T) {
 			Name:  "Empty mind, full body",
 			Store: emptyLog,
 			Request: &raft.AppendRequest{
-				Term:         5,
+				Term:         3,
 				LeaderId:     "localhost:8181",
 				PrevLogIndex: -1,
 				PrevLogTerm:  -1,
@@ -215,9 +215,119 @@ func TestReconcileLogs(t *testing.T) {
 	}
 }
 
-// func TestAddNewLog(t *testing.T) {
-// 	n := setupNode(t)
-// 	// Simulating node in leader position, rather than adding a time.Sleep
-// 	n.DoElection()
+type CommitTestCase struct {
+	Name     string
+	Store    *raft.LogStore
+	Request  *raft.AppendRequest
+	Expected map[string]string
+}
 
-// }
+func TestCommitLogs(t *testing.T) {
+	emptyLog := &raft.LogStore{
+		Entries: make([]*raft.LogRecord, 0, 0)}
+
+	firstThree := []*raft.LogRecord{
+		{
+			Term:   1,
+			Action: raft.LogRecord_SET,
+			Key:    "Harry",
+			Value:  "present"},
+		{
+			Term:   2,
+			Action: raft.LogRecord_SET,
+			Key:    "Ron",
+			Value:  "absent"},
+		{
+			Term:   3,
+			Action: raft.LogRecord_SET,
+			Key:    "Hermione",
+			Value:  "present"}}
+
+	starterLog := &raft.LogStore{
+		Entries: firstThree}
+
+	nextTwo := []*raft.LogRecord{
+		{
+			Term:   5,
+			Action: raft.LogRecord_DEL,
+			Key:    "Harry"},
+		{
+			Term:   6,
+			Action: raft.LogRecord_DEL,
+			Key:    "Ron"}}
+
+	currentTerm := int64(6)
+	currentLead := "localhost:8181"
+
+	testCases := []CommitTestCase{
+		{
+			Name:  "Append no commit",
+			Store: emptyLog,
+			Request: &raft.AppendRequest{
+				Term:         currentTerm,
+				LeaderId:     currentLead,
+				PrevLogIndex: -1,
+				PrevLogTerm:  -1,
+				LeaderCommit: -1,
+				Entries:      firstThree},
+			Expected: map[string]string{
+				"Harry":    "",
+				"Ron":      "",
+				"Hermione": ""}},
+		{
+			Name:  "Commit some, none new",
+			Store: starterLog,
+			Request: &raft.AppendRequest{
+				Term:         currentTerm,
+				LeaderId:     currentLead,
+				PrevLogIndex: 2,
+				PrevLogTerm:  3,
+				LeaderCommit: 1,
+				Entries:      []*raft.LogRecord{}},
+			Expected: map[string]string{
+				"Harry":    "present",
+				"Ron":      "absent",
+				"Hermione": ""}},
+		{
+			Name:  "Commit some, some new",
+			Store: starterLog,
+			Request: &raft.AppendRequest{
+				Term:         currentTerm,
+				LeaderId:     currentLead,
+				PrevLogIndex: 2,
+				PrevLogTerm:  3,
+				LeaderCommit: 2,
+				Entries:      nextTwo},
+			Expected: map[string]string{
+				"Harry":    "present",
+				"Ron":      "absent",
+				"Hermione": "present"}},
+		{
+			Name:  "Commit all",
+			Store: starterLog,
+			Request: &raft.AppendRequest{
+				Term:         currentTerm,
+				LeaderId:     currentLead,
+				PrevLogIndex: 4,
+				PrevLogTerm:  6,
+				LeaderCommit: 4,
+				Entries:      nextTwo},
+			Expected: map[string]string{
+				"Harry":    "",
+				"Ron":      "",
+				"Hermione": "present"}}}
+
+	n := setupNode(t)
+	n.Halt()
+	n.setTerm(currentTerm, currentLead)
+
+	for _, tc := range testCases {
+		n.HandleAppend(tc.Request)
+		for k := range tc.Expected {
+			v := n.Store.Get(k)
+			if v != tc.Expected[k] {
+				t.Errorf("[%s] Expected %s=%s got %s", tc.Name, k, tc.Expected[k], v)
+			}
+		}
+	}
+}
