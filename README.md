@@ -20,17 +20,29 @@ The simplest way to build and test the application is to enter:
 make
 ```
 
-This will clean, build, and test the code. To build and run the app manually on Linux/Unix:
+This will clean, build, and test the code (make tasks may not currently work on Windows without [Windows Subsystem for Linux]). To automatically run (after clean and build), use:
+
+```
+make run
+```
+
+To provide flags (see [#configuration]) or other options:
+
+```
+make run run_opts='-raftport 16991'
+```
+
+To build and run the app manually on Linux/Unix:
 
 ```
 go clean
-go build -o app
+go build -o leifdb
 ```
 
 On Windows:
 ```
 go clean
-go build -o app.exe
+go build -o leifdb.exe
 ```
 
 Responses to client endpoints are string-formatted.
@@ -38,25 +50,25 @@ Responses to client endpoints are string-formatted.
 To manually run the test suite:
 
 ```
-go test
+go test ./...
 ```
 
 After building the binary, to find out what command line parameters are available:
 
 ```
-./app -h
+./leifdb -h
 ```
 
 To run the server with default parameters, do:
 
 ```
-./app
+./leifdb
 ```
 
 Or on Windows:
 
 ```
-./app.exe
+./leifdb.exe
 ```
 
 ## Configuration
@@ -143,15 +155,15 @@ configuration:
 To run a cluster on one machine, make 3 directories, and put a copy of the configuration above into each directory (using "/data/a", "/data/b", and "/data/c" for examples below--replace with your chosen directories). Replace "localhost" with your computer's preferred IP (can get it from `ifconfig` on Unix/Linux or `ipconfig` on Windows, or from an error message by running a server with the config file as written--better methods forthcoming). Then open three terminal windows and execute these in each:
 
 ```
-PORT=8080 ./app -raftport 16990 -data /data/a
+./leifdb -raftport 16990 -httpport 8080 -data /data/a
 ```
 
 ```
-PORT=8081 ./app -raftport 16991 -data /data/b
+./leifdb -raftport 16991 -httpport 8081 -data /data/b
 ```
 
 ```
-PORT=8082 ./app -raftport 16992 -data /data/c
+./leifdb -raftport 16992 -httpport 8082 -data /data/c
 ```
 
 (keep track of which window is which, since you'll need to figure out what the ports are for the one that becomes the leader, but you generally can't control which one it will be)
@@ -257,6 +269,8 @@ Aside from the Raft papers themselves, here are some related resources:
 [go-swagger/go-swagger]: https://pkg.go.dev/github.com/go-swagger/go-swagger@v0.2.0?tab=doc
 [spf13/viper]: https://github.com/spf13/viper
 [Viper docs on nested keys]: https://github.com/spf13/viper#accessing-nested-keys
+
+[Windows Subsystem for Linux]: https://docs.microsoft.com/en-us/windows/wsl/about
 
 [report-card]: https://goreportcard.com/report/github.com/btmorr/leifdb
 [report-card-badge]: https://goreportcard.com/badge/github.com/btmorr/leifdb

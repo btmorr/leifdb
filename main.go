@@ -101,7 +101,7 @@ func init() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{
 		Out:        os.Stdout,
 		TimeFormat: time.RFC3339})
-	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 }
 
 func main() {
@@ -119,7 +119,8 @@ func main() {
 	log.Info().Msgf("Election timeout: %s", n.ElectionTimeout.String())
 
 	raftPortString := fmt.Sprintf(":%d", cfg.RaftPort)
+	clientPortString := fmt.Sprintf(":%d", cfg.ClientPort)
 	go raftserver.StartRaftServer(raftPortString, n)
 	router := buildRouter(n)
-	router.Run()
+	router.Run(clientPortString)
 }
