@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
 	"testing"
 	"time"
 
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raft"
+	"github.com/btmorr/leifdb/internal/testutil"
 	"github.com/btmorr/leifdb/internal/util"
 	"github.com/golang/protobuf/proto"
 )
@@ -39,117 +39,10 @@ func setupServer(t *testing.T) *node.Node {
 
 	store := db.NewDatabase()
 
-	config := node.NewNodeConfig(testDir, addr)
+	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
 	n, _ := node.NewNode(config, store)
 	n.CheckForeignNode = checkForeignNodeMock
 	return n
-}
-
-// CompareLogs traverses a pair of LogStores to check for equality by value
-func CompareLogs(t *testing.T, testName string, got *raft.LogStore, expected *raft.LogStore) {
-	// Note: reflect.DeepEqual failed to return true for `LogRecord`s with
-	// identical contents, so have to do this instead... (DeepEqual probably
-	// can't reliably traverse objects with arrays of pointers to objects)
-
-	lengthG := len(got.Entries)
-	lengthE := len(expected.Entries)
-	if lengthG != lengthE {
-		t.Errorf(
-			"[%s] Expected %d log entries roundtrip but got %d\n",
-			testName,
-			lengthE,
-			lengthG)
-	} else {
-		for idx, entry := range got.Entries {
-			if entry.Term != expected.Entries[idx].Term {
-				t.Errorf(
-					"[%s] Expected term %d but got %d\n",
-					testName,
-					expected.Entries[idx].Term,
-					entry.Term)
-			}
-			if entry.Key != expected.Entries[idx].Key {
-				t.Errorf(
-					"[%s] Expected key %s but got %s\n",
-					testName,
-					expected.Entries[idx].Key,
-					entry.Key)
-			}
-			if entry.Value != expected.Entries[idx].Value {
-				t.Errorf(
-					"[%s] Expected value %s but got %s\n",
-					testName,
-					expected.Entries[idx].Value,
-					entry.Value)
-			}
-		}
-	}
-
-}
-
-func TestPersistence(t *testing.T) {
-	log.Println("~~~ TestPersistence")
-
-	addr := "localhost:8080"
-
-	testDir, _ := util.CreateTmpDir(".tmp-leifdb")
-	t.Cleanup(func() {
-		util.RemoveTmpDir(testDir)
-	})
-
-	config := node.NewNodeConfig(testDir, addr)
-
-	termRecord := &raft.TermRecord{Term: 5, VotedFor: "localhost:8181"}
-	node.WriteTerm(config.TermFile, termRecord)
-
-	termData := node.ReadTerm(config.TermFile)
-	if termData.Term != termRecord.Term {
-		t.Error("Term data file roundtrip incorrect term:", termData.Term)
-	}
-	if termData.VotedFor != termRecord.VotedFor {
-		t.Error("Term data file roundtrip incorrect vote:", termData.VotedFor)
-	}
-
-	logCache := &raft.LogStore{
-		Entries: []*raft.LogRecord{
-			{
-				Term:   1,
-				Action: raft.LogRecord_SET,
-				Key:    "test",
-				Value:  "run"},
-			{
-				Term:   2,
-				Action: raft.LogRecord_SET,
-				Key:    "other",
-				Value:  "questions"},
-			{
-				Term:   3,
-				Action: raft.LogRecord_SET,
-				Key:    "stuff",
-				Value:  "there"}}}
-
-	err := node.WriteLogs(config.LogFile, logCache)
-	if err != nil {
-		t.Error("Log write failure:", err)
-	}
-	_, err2 := os.Stat(config.LogFile)
-	if err2 != nil {
-		t.Error("LogFile does not exist after write:", err)
-	}
-	roundtrip := node.ReadLogs(config.LogFile)
-
-	CompareLogs(t, "Roundtrip", roundtrip, logCache)
-
-	store := db.NewDatabase()
-	n, _ := node.NewNode(config, store)
-
-	n.Halt()
-
-	if n.Term != 5 {
-		t.Error("Term not loaded correctly. Found term: ", n.Term)
-	}
-
-	CompareLogs(t, "Node load", n.Log, logCache)
 }
 
 type appendTestCase struct {
@@ -174,7 +67,7 @@ func TestAppend(t *testing.T) {
 		util.RemoveTmpDir(testDir)
 	})
 
-	config := node.NewNodeConfig(testDir, addr)
+	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
 
 	termRecord := &raft.TermRecord{Term: 5, VotedFor: "localhost:8181"}
 	node.WriteTerm(config.TermFile, termRecord)
@@ -319,7 +212,7 @@ func TestAppend(t *testing.T) {
 				reply.Success)
 		}
 		// Ensure node logs are as expected
-		CompareLogs(t, tc.name, n.Log, tc.expectedStore)
+		testutil.CompareLogs(t, tc.name, n.Log, tc.expectedStore)
 		// Ensure database state is as expected
 		for k := range tc.expectedDb {
 			expect := tc.expectedDb[k]
@@ -354,7 +247,7 @@ func TestVote(t *testing.T) {
 			request: &raft.VoteRequest{
 				Term:         1,
 				CandidateId:  testAddr,
-				LastLogIndex: 0,
+				LastLogIndex: -1,
 				LastLogTerm:  0},
 			expectTerm:      2,
 			expectVote:      false,
@@ -364,7 +257,7 @@ func TestVote(t *testing.T) {
 			request: &raft.VoteRequest{
 				Term:         3,
 				CandidateId:  testAddr,
-				LastLogIndex: 0,
+				LastLogIndex: -1,
 				LastLogTerm:  0},
 			expectTerm:      3,
 			expectVote:      true,

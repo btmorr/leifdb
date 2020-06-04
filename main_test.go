@@ -33,7 +33,7 @@ func setupServer(t *testing.T) (*gin.Engine, *node.Node) {
 
 	store := db.NewDatabase()
 
-	config := node.NewNodeConfig(testDir, addr)
+	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
 	n, _ := node.NewNode(config, store)
 	router := buildRouter(n)
 	n.DoElection()

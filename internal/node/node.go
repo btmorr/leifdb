@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	db "github.com/btmorr/leifdb/internal/database"
@@ -28,6 +29,10 @@ var (
 	// ErrCommitFailed indicates that the leader's commit index after append
 	// is less than the index of the record being added
 	ErrCommitFailed = errors.New("Failed to commit record")
+
+	// ErrAppendRangeMet indicates that reverse-iteration has reached the
+	// beginning of the log and still not gotten a response--aborting
+	ErrAppendRangeMet = errors.New("Append range reached, not trying again")
 )
 
 // A ForeignNode is another member of the cluster, with connections needed
@@ -41,18 +46,19 @@ type ForeignNode struct {
 
 // NewForeignNode constructs a ForeignNode from an address ("host:port")
 func NewForeignNode(address string) (*ForeignNode, error) {
-	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithTimeout(time.Second))
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to connect to %s", address)
 		return nil, err
 	}
+
 	client := raft.NewRaftClient(conn)
 
 	return &ForeignNode{
 		Connection: conn,
 		Client:     client,
-		NextIndex:  1,
-		MatchIndex: 0}, err
+		NextIndex:  0,
+		MatchIndex: -1}, err
 }
 
 // Close cleans up the gRPC connection with the foreign node
@@ -78,6 +84,7 @@ type NodeConfig struct {
 	DataDir  string
 	TermFile string
 	LogFile  string
+	NodeIds  []string
 }
 
 // ForeignNodeChecker functions are used to determine if a request comes from
@@ -299,12 +306,15 @@ func (n *Node) requestVote(host string) (bool, error) {
 		LastLogTerm:  0}
 
 	vote, err := n.otherNodes[host].Client.RequestVote(ctx, voteRequest)
+	granted := false
 	if err != nil {
-		log.Error().Err(err).Msgf("Error requesting vote from %sv", host)
+		log.Error().Err(err).Msgf("Error requesting vote from %s", host)
+	} else {
+		granted = vote.VoteGranted
 	}
 
 	// is this access safe?
-	return vote.VoteGranted, err
+	return granted, err
 }
 
 // DoElection sends out requests for votes to each other node in the Raft cluster.
@@ -333,6 +343,7 @@ func (n *Node) DoElection() {
 	n.resetElectionTimer()
 	numVotes := 1
 	for k := range n.otherNodes {
+		// put this in a goroutine and use a sync.WaitGroup to collect
 		vote, err := n.requestVote(k)
 		log.Trace().Msg("got a vote")
 		if err == nil && vote {
@@ -439,7 +450,12 @@ func (n *Node) requestAppend(host string) error {
 	// reasonable speculation about desired max message size)
 	idx := int64(len(n.Log.Entries))
 	newEntries := n.Log.Entries[prevLogIndex+1 : idx]
-	prevLogTerm := n.Log.Entries[prevLogIndex].Term
+	var prevLogTerm int64
+	if prevLogIndex >= 0 {
+		prevLogTerm = n.Log.Entries[prevLogIndex].Term
+	} else {
+		prevLogTerm = 0
+	}
 
 	req := &raft.AppendRequest{
 		Term:         n.Term,
@@ -452,16 +468,20 @@ func (n *Node) requestAppend(host string) error {
 	reply, err := n.otherNodes[host].Client.AppendLogs(ctx, req)
 	if err == nil {
 		if reply.Success {
-			n.otherNodes[host].MatchIndex = idx
-			n.otherNodes[host].NextIndex = idx + 1
+			n.otherNodes[host].MatchIndex = idx - 1
+			n.otherNodes[host].NextIndex = idx
 		} else {
-			n.otherNodes[host].MatchIndex--
+			if prevLogIndex > 0 {
+				n.otherNodes[host].MatchIndex--
+				return n.requestAppend(host)
+			} else {
+				return ErrAppendRangeMet
+			}
 			// todo: would it be viable for AppendReply to include the other
 			// node's log index, so this could fast-forward to the correct
 			// index, rather than recursing possibly down the whole list?
 			// This implementation will blow the stack fast with any kind of
 			// realistic history when you add a fresh node
-			return n.requestAppend(host)
 		}
 	}
 	return err
@@ -479,10 +499,13 @@ func (n *Node) doAppend(retriesRemaining int) error {
 
 	numAppended := 1
 	// Send append out to all other nodes with new record(s)
+	var wg sync.WaitGroup
 	for k := range n.otherNodes {
 		// append new entries
 		// update indicies
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			err := n.requestAppend(k)
 			if err != nil {
 				log.Error().Err(err).Msgf("Error requesting append from %s", k)
@@ -490,14 +513,17 @@ func (n *Node) doAppend(retriesRemaining int) error {
 				numAppended++
 			}
 		}()
-
 	}
+	wg.Wait()
+
 	log.Debug().Msgf("Appended to %d nodes", numAppended)
 	if numAppended >= majority {
+		log.Trace().Msg("majority")
 		// update commit index on this node and apply newly committed records
 		// to the database (next automatic append will commit on other nodes)
 		n.commitRecords()
 	} else {
+		log.Trace().Msg("minority")
 		// did not get a majority
 		if retriesRemaining > 0 {
 			return n.doAppend(retriesRemaining - 1)
@@ -509,14 +535,15 @@ func (n *Node) doAppend(retriesRemaining int) error {
 }
 
 // NewNodeConfig creates a config for a Node
-func NewNodeConfig(dataDir string, addr string) NodeConfig {
+func NewNodeConfig(dataDir string, addr string, nodeIds []string) NodeConfig {
 	// todo: check dataDir. if it is empty, initialize Node with default
 	// values for non-volatile state. Otherwise, read values.
 	return NodeConfig{
 		Id:       addr,
 		DataDir:  dataDir,
 		TermFile: filepath.Join(dataDir, "term"),
-		LogFile:  filepath.Join(dataDir, "raftlog")}
+		LogFile:  filepath.Join(dataDir, "raftlog"),
+		NodeIds:  nodeIds}
 }
 
 // checkForeignNode verifies that a node is a known member of the cluster (this
@@ -563,6 +590,10 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		config:           config,
 		Store:            store}
 
+	for _, addr := range config.NodeIds {
+		n.AddForeignNode(addr)
+	}
+
 	go func() {
 		log.Trace().Msg("First election timer")
 		<-n.electionTimer.C
@@ -608,6 +639,7 @@ func (n *Node) resetElectionTimer() {
 
 // AddForeignNode updates the list of known other members of the raft cluster
 func (n *Node) AddForeignNode(addr string) {
+	log.Trace().Msgf("AddForeignNode: %s", addr)
 	n.otherNodes[addr], _ = NewForeignNode(addr)
 	log.Info().Msgf("Added %s to known nodes", addr)
 }
@@ -665,30 +697,30 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 
 // If an existing entry conflicts with a new one (same idx diff term),
 // reconcileLogs deletes the existing entry and any that follow
-func (n *Node) reconcileLogs(body *raft.AppendRequest) {
+func reconcileLogs(logStore *raft.LogStore, body *raft.AppendRequest) *raft.LogStore {
 	// note: don't memoize length of Entries, it changes multiple times
 	// during this method--safer to recalculate, and memoizing would
 	// only save a maximum of one pass so it's not worth it
 	var mismatchIdx int64
 	mismatchIdx = -1
-	if body.PrevLogIndex < int64(len(n.Log.Entries)) {
-		overlappingEntries := n.Log.Entries[body.PrevLogIndex:]
+	if body.PrevLogIndex < int64(len(logStore.Entries)-1) {
+		overlappingEntries := logStore.Entries[body.PrevLogIndex+1:]
 		for i, rec := range overlappingEntries {
 			if rec.Term != body.Entries[i].Term {
-				mismatchIdx = body.PrevLogIndex + int64(i)
+				mismatchIdx = body.PrevLogIndex + 1 + int64(i)
 				break
 			}
 		}
 	}
 	if mismatchIdx >= 0 {
 		log.Debug().Msgf("Mismatch index: %d - rewinding log", mismatchIdx)
-		n.Log.Entries = n.Log.Entries[:mismatchIdx]
+		logStore.Entries = logStore.Entries[:mismatchIdx]
 	}
 	// append any entries not already in log
-	offset := int64(len(n.Log.Entries)) - body.PrevLogIndex - 1
+	offset := int64(len(logStore.Entries)-1) - body.PrevLogIndex
 	newLogs := body.Entries[offset:]
 	log.Debug().Msgf("Appending %d entries", len(newLogs))
-	n.Log.Entries = append(n.Log.Entries, newLogs...)
+	return &raft.LogStore{Entries: append(logStore.Entries, newLogs...)}
 }
 
 // applyCommittedLogs updates the database with actions that have not yet been
@@ -727,6 +759,9 @@ func (n *Node) applyCommittedLogs(commitIdx int64) {
 // checkPrevious returns true if Node.logs contains an entry at the specified
 // index with the specified term, otherwise false
 func (n *Node) checkPrevious(prevIndex int64, prevTerm int64) bool {
+	if prevIndex < 0 {
+		return true
+	}
 	return prevIndex < int64(len(n.Log.Entries)) && n.Log.Entries[prevIndex].Term == prevTerm
 }
 
@@ -745,7 +780,7 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 	} else {
 		// Valid request, and all required logs present
 		if len(req.Entries) > 0 {
-			n.reconcileLogs(req)
+			n.Log = reconcileLogs(n.Log, req)
 		}
 		n.applyCommittedLogs(req.LeaderCommit)
 		success = true
