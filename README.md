@@ -26,7 +26,7 @@ This will clean, build, and test the code (make tasks may not currently work on 
 make run
 ```
 
-To provide flags (see [#configuration]) or other options:
+To provide flags (see [Configuration](#configuration)) or other options:
 
 ```
 make run run_opts='-raftport 16991'
@@ -185,7 +185,7 @@ Follower nodes will be streaming messages like:
 2020-06-04T07:40:16-04:00 DBG Received append request: term:105 leaderId:"192.168.1.21:16991" prevLogIndex:1 prevLogTerm:97 leaderCommit:1
 ```
 
-Determine which ports correspond to the leader (let's say it's the one with an HTTP service bound to port 8080), then you can issue writes to the leader node, followed by reads to any node. See [#database-requests] for writing read/write requests.
+Determine which ports correspond to the leader (let's say it's the one with an HTTP service bound to port 8080), then you can issue writes to the leader node, followed by reads to any node. See [Database requests](#database-requests) for writing read/write requests.
 
 ## Endpoints
 
