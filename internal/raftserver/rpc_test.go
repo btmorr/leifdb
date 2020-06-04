@@ -39,7 +39,7 @@ func setupServer(t *testing.T) *node.Node {
 
 	store := db.NewDatabase()
 
-	config := node.NewNodeConfig(testDir, addr)
+	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
 	n, _ := node.NewNode(config, store)
 	n.CheckForeignNode = checkForeignNodeMock
 	return n
@@ -97,7 +97,7 @@ func TestPersistence(t *testing.T) {
 		util.RemoveTmpDir(testDir)
 	})
 
-	config := node.NewNodeConfig(testDir, addr)
+	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
 
 	termRecord := &raft.TermRecord{Term: 5, VotedFor: "localhost:8181"}
 	node.WriteTerm(config.TermFile, termRecord)
@@ -174,7 +174,7 @@ func TestAppend(t *testing.T) {
 		util.RemoveTmpDir(testDir)
 	})
 
-	config := node.NewNodeConfig(testDir, addr)
+	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
 
 	termRecord := &raft.TermRecord{Term: 5, VotedFor: "localhost:8181"}
 	node.WriteTerm(config.TermFile, termRecord)
@@ -354,7 +354,7 @@ func TestVote(t *testing.T) {
 			request: &raft.VoteRequest{
 				Term:         1,
 				CandidateId:  testAddr,
-				LastLogIndex: 0,
+				LastLogIndex: -1,
 				LastLogTerm:  0},
 			expectTerm:      2,
 			expectVote:      false,
@@ -364,7 +364,7 @@ func TestVote(t *testing.T) {
 			request: &raft.VoteRequest{
 				Term:         3,
 				CandidateId:  testAddr,
-				LastLogIndex: 0,
+				LastLogIndex: -1,
 				LastLogTerm:  0},
 			expectTerm:      3,
 			expectVote:      true,

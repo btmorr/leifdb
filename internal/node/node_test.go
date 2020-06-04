@@ -43,7 +43,7 @@ func setupNode(t *testing.T) *Node {
 
 	store := db.NewDatabase()
 
-	config := NewNodeConfig(testDir, addr)
+	config := NewNodeConfig(testDir, addr, make([]string, 0, 0))
 	n, _ := NewNode(config, store)
 	n.CheckForeignNode = checkForeignNodeMock
 	return n

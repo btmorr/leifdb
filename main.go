@@ -100,7 +100,7 @@ func init() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{
 		Out:        os.Stdout,
 		TimeFormat: time.RFC3339})
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
 }
 
 func main() {
@@ -109,14 +109,10 @@ func main() {
 	fmt.Printf("Configuration:\n%+v\n\n", *cfg)
 
 	store := database.NewDatabase()
-	config := node.NewNodeConfig(cfg.DataDir, cfg.RaftAddr)
+	config := node.NewNodeConfig(cfg.DataDir, cfg.RaftAddr, cfg.NodeIds)
 	n, err := node.NewNode(config, store)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize node")
-	}
-
-	for _, nodeId := range cfg.ClusterCfg.NodeIds {
-		n.AddForeignNode(nodeId)
 	}
 
 	log.Info().Msgf("Election timeout: %s", n.ElectionTimeout.String())

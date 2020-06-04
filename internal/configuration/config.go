@@ -66,7 +66,8 @@ type ServerConfig struct {
 	RaftAddr   string
 	CleintPort int
 	ClientAddr string
-	ClusterCfg *ClusterConfig
+	Mode       ClusterMode
+	NodeIds    []string
 }
 
 type ClusterConfig struct {
@@ -104,7 +105,7 @@ func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
 				subv := viper.Sub(s)
 				addr := subv.GetString("host")
 				port := subv.GetInt("port")
-				// fmt.Printf("%s at %s:%d\n", s, addr, port)
+				fmt.Printf("%s at %s:%d\n", s, addr, port)
 				nodeId := fmt.Sprintf("%s:%d", addr, port)
 				if nodeId != raftAddr {
 					// Don't include self in `otherNodes`
@@ -112,9 +113,10 @@ func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
 				} else {
 					selfInConfig = true
 				}
-				if !selfInConfig {
-					panic(ErrSelfNotInConfig)
-				}
+			}
+			if !selfInConfig {
+				fmt.Println("Self:", raftAddr)
+				panic(ErrSelfNotInConfig)
 			}
 		} // else single node configuration
 	}
@@ -129,10 +131,18 @@ func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
 // that ensure that the configration is locally valid (such as checking that the IP
 // and RaftPort for this machine are included in the cluster configuration)
 func BuildServerConfig() *ServerConfig {
-	var dataDir = *flag.String("data", "", "Path to directory for data storage")
-	var raftPort = *flag.Int("raftport", 16990, "Port number for Raft gRPC service interface")
-	var clientPort = *flag.Int("httpport", 8080, "Port number for database HTTP service interface")
+	dataDirP := flag.String("data", "", "Path to directory for data storage")
+	raftPortP := flag.Int("raftport", 16990, "Port number for Raft gRPC service interface")
+	clientPortP := flag.Int("httpport", 8080, "Port number for database HTTP service interface")
 	flag.Parse()
+
+	dataDir := *dataDirP
+	raftPort := *raftPortP
+	clientPort := *clientPortP
+
+	fmt.Println("DataDir: ", dataDir)
+	fmt.Println("RaftPort:", raftPort)
+	fmt.Println("HttpPort:", clientPort)
 
 	ip := GetOutboundIP()
 
@@ -152,6 +162,8 @@ func BuildServerConfig() *ServerConfig {
 		panic(err2)
 	}
 
+	fmt.Println("DataDir2:", dataDir)
+
 	ccfg := buildClusterConfig(dataDir, raftAddr)
 
 	return &ServerConfig{
@@ -161,5 +173,6 @@ func BuildServerConfig() *ServerConfig {
 		RaftAddr:   raftAddr,
 		CleintPort: clientPort,
 		ClientAddr: clientAddr,
-		ClusterCfg: ccfg}
+		Mode:       ccfg.Mode,
+		NodeIds:    ccfg.NodeIds}
 }
