@@ -1,0 +1,74 @@
+definitions:
+  main.HealthResponse:
+    properties:
+      status:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: A distributed K-V store using the Raft protocol
+  license:
+    name: MIT
+    url: https://github.com/btmorr/leifdb/blob/edge/LICENSE
+  title: LeifDb Client API
+  version: "0.1"
+paths:
+  /db/{key}:
+    delete:
+      consumes:
+      - '*/*'
+      operationId: db-delete
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Ok
+          schema:
+            type: string
+        "303":
+          description: Found
+          schema:
+            type: string
+      summary: Delete item from database by key
+    get:
+      consumes:
+      - '*/*'
+      operationId: db-read
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Ok
+          schema:
+            type: string
+      summary: Return value from database by key
+    put:
+      consumes:
+      - '*/*'
+      operationId: db-write
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Ok
+          schema:
+            type: string
+        "303":
+          description: Found
+          schema:
+            type: string
+      summary: Write value to database by key
+  /health:
+    get:
+      consumes:
+      - '*/*'
+      operationId: http-health
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.HealthResponse'
+      summary: Return server health status
+swagger: "2.0"

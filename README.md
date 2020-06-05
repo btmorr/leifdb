@@ -194,7 +194,7 @@ Determine which ports correspond to the leader (let's say it's the one with an H
 To create/update a key-value pair (key `somekey`):
 
 ```
-curl -i -X POST localhost:8080/db/somekey -d '{"value": "test"}'
+curl -i -X PUT localhost:8080/db/somekey?value=test'
 ```
 
 To read the current value for a key `somekey`:
@@ -236,7 +236,6 @@ Raft complete (additional functionality in the [full Raft paper]):
 General application:
 - Add scripts for starting a cluster / changing membership (probably something to the tune of [Docker] + [Kubernetes] + [Terraform])
 - Performance benchmarking (see the "Measurement" section of [Paxos Made Live] for a couple of ways to set up benchmarks) (also, compare performance with differing levels of debug logging turned on)
-- Swagger/OpenAPI compatibility for HTTP API (could add [swagger middleware for gin], or could use [go-swagger/go-swagger] for code generation)
 - Dashboard for visualization / management of a cluster? (a la [Consul])
 
 ## Prior art

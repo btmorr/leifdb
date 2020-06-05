@@ -16,6 +16,7 @@ clean:
 
 .PHONY: app
 app: clean
+	swag init
 	gofmt -w -s .
 	go fix
 	go build -o $(binary_prefix)$(version)

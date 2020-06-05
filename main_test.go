@@ -3,8 +3,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -58,19 +56,15 @@ func TestReadAfterWrite(t *testing.T) {
 	router, _ := setupServer(t)
 
 	v := "testy"
-	body1 := WriteBody{
-		Value: v}
-	b1, _ := json.Marshal(body1)
-	br1 := bytes.NewReader(b1)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/db/stuff", br1)
+	req, _ := http.NewRequest("PUT", "/db/stuff?value="+v, nil)
 	router.ServeHTTP(w, req)
 
 	fmt.Printf("Response: %+v\n", w)
 
 	if w.Code != http.StatusOK {
-		t.Error("Non-200 health status in POST:", w.Code)
+		t.Error("Non-200 health status in PUT:", w.Code)
 	}
 
 	w2 := httptest.NewRecorder()
@@ -92,19 +86,15 @@ func TestDelete(t *testing.T) {
 	router, _ := setupServer(t)
 
 	v := "testy"
-	body1 := WriteBody{
-		Value: v}
-	b1, _ := json.Marshal(body1)
-	br1 := bytes.NewReader(b1)
 
 	uri := "/db/stuff"
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", uri, br1)
+	req, _ := http.NewRequest("PUT", uri+"?value="+v, nil)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Error("Non-200 health status in POST:", w.Code)
+		t.Error("Non-200 health status in PUT:", w.Code)
 	}
 
 	w2 := httptest.NewRecorder()
