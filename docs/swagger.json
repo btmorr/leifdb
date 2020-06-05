@@ -46,8 +46,8 @@
                             "type": "string"
                         }
                     },
-                    "303": {
-                        "description": "Found",
+                    "307": {
+                        "description": "Temporary Redirect",
                         "schema": {
                             "type": "string"
                         }
@@ -70,8 +70,8 @@
                             "type": "string"
                         }
                     },
-                    "303": {
-                        "description": "Found",
+                    "307": {
+                        "description": "Temporary Redirect",
                         "schema": {
                             "type": "string"
                         }

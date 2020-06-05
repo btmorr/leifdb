@@ -13,6 +13,7 @@ import (
 	"github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raftserver"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -82,10 +83,10 @@ func (ctl *Controller) handleRead(c *gin.Context) {
 // @Accept */*
 // @Produce text/plain
 // @Success 200 {string} string "Ok"
-// @Failure 303 {string} string "Found"
+// @Failure 307 {string} string "Temporary Redirect"
 // @Router /db/{key} [put]
 func (ctl *Controller) handleWrite(c *gin.Context) {
-	// todo: add redirect if not leader
+	// todo: add redirect if not leader, use "Location:" header
 	key := c.Param("key")
 	value := c.Request.URL.Query().Get("value")
 
@@ -104,10 +105,10 @@ func (ctl *Controller) handleWrite(c *gin.Context) {
 // @Accept */*
 // @Produce text/plain
 // @Success 200 {string} string "Ok"
-// @Failure 303 {string} string "Found"
+// @Failure 307 {string} string "Temporary Redirect"
 // @Router /db/{key} [delete]
 func (ctl *Controller) handleDelete(c *gin.Context) {
-	// todo: add redirect if not leader
+	// todo: add redirect if not leader, use "Location:" header
 	key := c.Param("key")
 
 	if err := ctl.Node.Delete(key); err != nil {
@@ -126,6 +127,7 @@ func buildRouter(n *node.Node) *gin.Engine {
 	ctl := NewController(n)
 
 	router := gin.Default()
+	router.Use(cors.Default())
 
 	router.GET("/health", ctl.handleHealth)
 

@@ -63,8 +63,8 @@ var doc = `{
                             "type": "string"
                         }
                     },
-                    "303": {
-                        "description": "Found",
+                    "307": {
+                        "description": "Temporary Redirect",
                         "schema": {
                             "type": "string"
                         }
@@ -87,8 +87,8 @@ var doc = `{
                             "type": "string"
                         }
                     },
-                    "303": {
-                        "description": "Found",
+                    "307": {
+                        "description": "Temporary Redirect",
                         "schema": {
                             "type": "string"
                         }

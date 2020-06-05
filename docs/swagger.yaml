@@ -25,8 +25,8 @@ paths:
           description: Ok
           schema:
             type: string
-        "303":
-          description: Found
+        "307":
+          description: Temporary Redirect
           schema:
             type: string
       summary: Delete item from database by key
@@ -53,8 +53,8 @@ paths:
           description: Ok
           schema:
             type: string
-        "303":
-          description: Found
+        "307":
+          description: Temporary Redirect
           schema:
             type: string
       summary: Write value to database by key
