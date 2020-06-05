@@ -16,7 +16,7 @@ clean:
 
 .PHONY: install
 install:
-	go get -u github.com/swaggo/swag
+	go get -u github.com/swaggo/swag/cmd/swag
 
 .PHONY: app
 app: clean

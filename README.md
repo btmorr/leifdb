@@ -23,7 +23,7 @@ make install
 or manually:
 
 ```
-go get -u github.com/swaggo/swag
+go get -u github.com/swaggo/swag/cmd/swag
 ```
 
 ## Build and run
