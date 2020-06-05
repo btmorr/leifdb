@@ -191,23 +191,35 @@ Determine which ports correspond to the leader (let's say it's the one with an H
 
 ### Database requests
 
-To create/update a key-value pair (key `somekey`):
+After starting the server, you'll be able to interact with the database via the HTTP client interface. The Swagger/OpenAPIv2.0 schema describes the endpoints in the HTTP interface. First, start the server (assuming default HTTP port of 8080 for examples) with `make run` or by invoking the binary directly. Then, to get a copy of the Swagger JSON schema:
 
 ```
-curl -i -X PUT localhost:8080/db/somekey?value=test'
+curl -i localhost:8080/
 ```
 
-To read the current value for a key `somekey`:
+You can also view and interact with endpoints via the auto-generated [Swagger API page](http://localhost:8080/swagger/index.html). This has a section for each endpoint with descriptions, parameters, and an interactive query-runner to make it easy to manually test the server.
+
+CORS is enabled, and you can double-check to make sure that [preflight requests] are handled correctly by doing:
 
 ```
-curl -i -X GET localhost:8080/db/somekey
+curl -X OPTIONS -D - -H 'Origin: http://foo.com' -H 'Access-Control-Request-Method: POST' localhost:8080/db/testKey?value=something
 ```
 
-To remove/delete a key `somekey` from the database:
+Server should respond with roughly:
 
 ```
-curl -i -X DELETE localhost:8080/db/somekey
+HTTP/1.1 200 OK
+Access-Control-Allow-Methods: POST
+Access-Control-Allow-Origin: *
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+Date: Fri, 05 Jun 2020 20:47:51 GMT
+Content-Length: 0
+
 ```
+
+[preflight requests]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
 ### Raft requests
 

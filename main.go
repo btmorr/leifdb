@@ -13,8 +13,8 @@ import (
 	"github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raftserver"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	cors "github.com/rs/cors/wrapper/gin"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/swaggo/gin-swagger"
@@ -67,6 +67,7 @@ func (ctl *Controller) handleHealth(c *gin.Context) {
 // @ID db-read
 // @Accept */*
 // @Produce text/plain
+// @Param key path string true "Key"
 // @Success 200 {string} string "Ok"
 // @Router /db/{key} [get]
 func (ctl *Controller) handleRead(c *gin.Context) {
@@ -77,13 +78,16 @@ func (ctl *Controller) handleRead(c *gin.Context) {
 	c.String(status, value)
 }
 
-// Handler for database writes (PUT /db/:key)
+// Handler for database writes (PUT /db/:key?value="<value>")
 // @Summary Write value to database by key
 // @ID db-write
 // @Accept */*
 // @Produce text/plain
+// @Param key path string true "Key"
+// @Param value query string false "Value"
 // @Success 200 {string} string "Ok"
 // @Failure 307 {string} string "Temporary Redirect"
+// @Header 307 {string} Location "localhost:8181"
 // @Router /db/{key} [put]
 func (ctl *Controller) handleWrite(c *gin.Context) {
 	// todo: add redirect if not leader, use "Location:" header
@@ -104,8 +108,10 @@ func (ctl *Controller) handleWrite(c *gin.Context) {
 // @ID db-delete
 // @Accept */*
 // @Produce text/plain
+// @Param key path string true "Key"
 // @Success 200 {string} string "Ok"
 // @Failure 307 {string} string "Temporary Redirect"
+// @Header 307 {string} Location "localhost:8181"
 // @Router /db/{key} [delete]
 func (ctl *Controller) handleDelete(c *gin.Context) {
 	// todo: add redirect if not leader, use "Location:" header

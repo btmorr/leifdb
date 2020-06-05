@@ -18,6 +18,12 @@ paths:
       consumes:
       - '*/*'
       operationId: db-delete
+      parameters:
+      - description: Key
+        in: path
+        name: key
+        required: true
+        type: string
       produces:
       - text/plain
       responses:
@@ -27,6 +33,10 @@ paths:
             type: string
         "307":
           description: Temporary Redirect
+          headers:
+            Location:
+              description: localhost:8181
+              type: string
           schema:
             type: string
       summary: Delete item from database by key
@@ -34,6 +44,12 @@ paths:
       consumes:
       - '*/*'
       operationId: db-read
+      parameters:
+      - description: Key
+        in: path
+        name: key
+        required: true
+        type: string
       produces:
       - text/plain
       responses:
@@ -46,6 +62,16 @@ paths:
       consumes:
       - '*/*'
       operationId: db-write
+      parameters:
+      - description: Key
+        in: path
+        name: key
+        required: true
+        type: string
+      - description: Value
+        in: query
+        name: value
+        type: string
       produces:
       - text/plain
       responses:
@@ -55,6 +81,10 @@ paths:
             type: string
         "307":
           description: Temporary Redirect
+          headers:
+            Location:
+              description: localhost:8181
+              type: string
           schema:
             type: string
       summary: Write value to database by key

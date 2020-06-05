@@ -38,6 +38,15 @@ var doc = `{
                 ],
                 "summary": "Return value from database by key",
                 "operationId": "db-read",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Ok",
@@ -56,6 +65,21 @@ var doc = `{
                 ],
                 "summary": "Write value to database by key",
                 "operationId": "db-write",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Value",
+                        "name": "value",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Ok",
@@ -67,6 +91,12 @@ var doc = `{
                         "description": "Temporary Redirect",
                         "schema": {
                             "type": "string"
+                        },
+                        "headers": {
+                            "Location": {
+                                "type": "string",
+                                "description": "localhost:8181"
+                            }
                         }
                     }
                 }
@@ -80,6 +110,15 @@ var doc = `{
                 ],
                 "summary": "Delete item from database by key",
                 "operationId": "db-delete",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Ok",
@@ -91,6 +130,12 @@ var doc = `{
                         "description": "Temporary Redirect",
                         "schema": {
                             "type": "string"
+                        },
+                        "headers": {
+                            "Location": {
+                                "type": "string",
+                                "description": "localhost:8181"
+                            }
                         }
                     }
                 }
