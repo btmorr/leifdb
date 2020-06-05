@@ -14,8 +14,13 @@ clean:
 	go clean
 	rm ./$(binary_prefix)* || true
 
+.PHONY: install
+install:
+	go get -u github.com/swaggo/swag/cmd/swag
+
 .PHONY: app
 app: clean
+	swag init
 	gofmt -w -s .
 	go fix
 	go build -o $(binary_prefix)$(version)

@@ -4,15 +4,29 @@
 [![License][license-badge]][license]
 [![Build Status][build-badge]][build]
 
-LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go, based on the [short Raft paper
+LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go, based on the [short Raft paper]. It has an [OpenAPIv2.0]-compatible HTTP interface for client interaction, and serves the schema for the client interface at the root HTTP endpoint to allow clients to discover and use endpoints programatically.
 
 The aim of this project is to build a distributed, consistent, fault-tolerant database along the lines of [etcd], which backs [Kubernetes]; [Consul], which backs [Vault] and other HashiCorp tools; or [ZooKeeper], which backs most Hadoop-related projects. (etcd and Consul use Raft, ZooKeeper uses a similar algorithm called [Zab], and there are others that use other algorithms such as [Paxos])
 
 Contributions are welcome! Check out the [Contributing Guide] for more info on how to make feature requests, subtmit bug reports, or create pull requests.
 
-## Build and run
+## Install
 
-This project requires Go 1.14.x, and modifying some elements requires protobuf. If you do not have these installed, see the instructions in the [Contributing Guide].
+This project requires Go 1.14.x and the `swag` cli tool, and modifying some elements requires protobuf. If you do not have these installed, see the instructions in the [Contributing Guide].
+
+Install the `swag` cli:
+
+```
+make install
+```
+
+or manually:
+
+```
+go get -u github.com/swaggo/swag/cmd/swag
+```
+
+## Build and run
 
 The simplest way to build and test the application is to enter:
 
@@ -70,6 +84,42 @@ Or on Windows:
 ```
 ./leifdb.exe
 ```
+
+## Endpoints
+
+### Database requests
+
+After starting the server, you'll be able to interact with the database via the HTTP client interface. The Swagger/OpenAPIv2.0 schema describes the endpoints in the HTTP interface. First, start the server (assuming default HTTP port of 8080 for examples) with `make run` or by invoking the binary directly. Then, to get a copy of the Swagger JSON schema:
+
+```
+curl -i localhost:8080/
+```
+
+You can also view and interact with endpoints via the auto-generated [Swagger API page](http://localhost:8080/swagger/index.html). This has a section for each endpoint with descriptions, parameters, and an interactive query-runner to make it easy to manually test the server.
+
+CORS is enabled, and you can double-check to make sure that [preflight requests] are handled correctly by doing:
+
+```
+curl -X OPTIONS -D - -H 'Origin: http://foo.com' -H 'Access-Control-Request-Method: POST' localhost:8080/db/testKey?value=something
+```
+
+Server should respond with roughly:
+
+```
+HTTP/1.1 200 OK
+Access-Control-Allow-Methods: POST
+Access-Control-Allow-Origin: *
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+Date: Fri, 05 Jun 2020 20:47:51 GMT
+Content-Length: 0
+
+```
+
+### Raft requests
+
+Messages used for managing Raft state use protobuf. See test cases for examples of how to construct message bodies. For more info on creating valid values for fields, see the [short Raft paper].
 
 ## Configuration
 
@@ -187,42 +237,6 @@ Follower nodes will be streaming messages like:
 
 Determine which ports correspond to the leader (let's say it's the one with an HTTP service bound to port 8080), then you can issue writes to the leader node, followed by reads to any node. See [Database requests](#database-requests) for writing read/write requests.
 
-## Endpoints
-
-### Database requests
-
-To create/update a key-value pair (key `somekey`):
-
-```
-curl -i -X POST localhost:8080/db/somekey -d '{"value": "test"}'
-```
-
-To read the current value for a key `somekey`:
-
-```
-curl -i -X GET localhost:8080/db/somekey
-```
-
-To remove/delete a key `somekey` from the database:
-
-```
-curl -i -X DELETE localhost:8080/db/somekey
-```
-
-### Raft requests
-
-Messages used for managing Raft state use protobuf. See test cases for examples of how to construct message bodies. For more info on creating valid values for fields, see the [short Raft paper].
-
-### Other requests
-
-To check the health status of the server:
-
-```
-curl -i localhost:8080/health
-```
-
-Currently, the return code of this endpoint is the main indicator of health (200 for healthy, anything else indicates not healthy).
-
 ## Todo
 
 Raft basics (everything from the [short Raft paper]):
@@ -236,7 +250,6 @@ Raft complete (additional functionality in the [full Raft paper]):
 General application:
 - Add scripts for starting a cluster / changing membership (probably something to the tune of [Docker] + [Kubernetes] + [Terraform])
 - Performance benchmarking (see the "Measurement" section of [Paxos Made Live] for a couple of ways to set up benchmarks) (also, compare performance with differing levels of debug logging turned on)
-- Swagger/OpenAPI compatibility for HTTP API (could add [swagger middleware for gin], or could use [go-swagger/go-swagger] for code generation)
 - Dashboard for visualization / management of a cluster? (a la [Consul])
 
 ## Prior art
@@ -253,6 +266,7 @@ Aside from the Raft papers themselves, here are some related resources:
 [Eli Bendersky's blog post]: https://eli.thegreenplace.net/2020/implementing-raft-part-0-introduction/
 [talk on Raft]: https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained/
 [Paxos Made Live]: https://dl.acm.org/doi/10.1145/1281100.1281103
+[OpenAPIv2.0]: http://spec.openapis.org/oas/v2.0
 
 [Docker]: https://www.docker.com/
 [etcd]: https://etcd.io
@@ -265,10 +279,9 @@ Aside from the Raft papers themselves, here are some related resources:
 [Paxos]: http://research.microsoft.com/users/lamport/pubs/paxos-simple.pdf
 
 [gin-gonic/gin]: https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview
-[swagger middleware for gin]: https://pkg.go.dev/github.com/swaggo/gin-swagger?tab=overview
-[go-swagger/go-swagger]: https://pkg.go.dev/github.com/go-swagger/go-swagger@v0.2.0?tab=doc
 [spf13/viper]: https://github.com/spf13/viper
 [Viper docs on nested keys]: https://github.com/spf13/viper#accessing-nested-keys
+[preflight requests]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
 [Windows Subsystem for Linux]: https://docs.microsoft.com/en-us/windows/wsl/about
 
