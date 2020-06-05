@@ -1,4 +1,7 @@
 language: go
 
+before_install:
+  - go get -u github.com/swaggo/swag
+
 go:
   - 1.14.x

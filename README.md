@@ -10,9 +10,23 @@ The aim of this project is to build a distributed, consistent, fault-tolerant da
 
 Contributions are welcome! Check out the [Contributing Guide] for more info on how to make feature requests, subtmit bug reports, or create pull requests.
 
-## Build and run
+## Install
 
-This project requires Go 1.14.x, and modifying some elements requires protobuf. If you do not have these installed, see the instructions in the [Contributing Guide].
+This project requires Go 1.14.x and the `swag` cli tool, and modifying some elements requires protobuf. If you do not have these installed, see the instructions in the [Contributing Guide].
+
+Install the `swag` cli:
+
+```
+make install
+```
+
+or manually:
+
+```
+go get -u github.com/swaggo/swag
+```
+
+## Build and run
 
 The simplest way to build and test the application is to enter:
 

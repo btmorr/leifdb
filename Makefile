@@ -14,6 +14,10 @@ clean:
 	go clean
 	rm ./$(binary_prefix)* || true
 
+.PHONY: install
+install:
+	go get -u github.com/swaggo/swag
+
 .PHONY: app
 app: clean
 	swag init
