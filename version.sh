@@ -2,7 +2,7 @@
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 SHORT_HASH=$(git rev-parse --short HEAD)
-VERSION="0.1.0-beta"
+VERSION="0.1.0-beta.2"
 
 if [ $BRANCH == "edge" ]
 then
