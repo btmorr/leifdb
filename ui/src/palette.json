@@ -1,0 +1,54 @@
+{
+  "viridis": {
+    "0.00": {
+      "name": "aubergine",
+      "hex": "#440154"
+    },
+    "0.25": {
+      "name": "dusty-blue",
+      "hex": "#3b528b"
+    },
+    "0.50": {
+      "name": "teal",
+      "hex": "#21908d"
+    },
+    "0.75": {
+      "name": "med-green",
+      "hex": "#5bc864"
+    },
+    "1.00": {
+      "name": "hella-yella",
+      "hex": "#fbe723"
+    }
+  },
+  "magma": {
+    "0.00": {
+      "name": "almost-black",
+      "hex": "#000004"
+    },
+    "0.10": {
+      "name": "not-quite-as-black",
+      "hex": "#140e37"
+    },
+    "0.25": {
+      "name": "lt-aubergine",
+      "hex": "#50127c"
+    },
+    "0.50": {
+      "name": "fuschia",
+      "hex": "#b5367a"
+    },
+    "0.75": {
+      "name": "salmon",
+      "hex": "#fb8661"
+    },
+    "0.90": {
+      "name": "peach",
+      "hex": "#fecd90"
+    },
+    "1.00": {
+      "name": "soft-serve",
+      "hex": "#fcfbed"
+    }
+  }
+}
