@@ -133,7 +133,7 @@ func buildRouter(n *node.Node) *gin.Engine {
 	ctl := NewController(n)
 
 	router := gin.Default()
-	router.Use(cors.Default())
+	router.Use(cors.AllowAll())
 
 	router.GET("/health", ctl.handleHealth)
 

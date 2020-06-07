@@ -1,7 +1,7 @@
 import React, { FunctionComponent, useState } from 'react';
 import logo from './logo.svg';
 import { Layout, Menu, Breadcrumb, Input, Button, Space, Alert, Card } from 'antd';
-import { SearchOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, CheckCircleFilled, WarningFilled } from '@ant-design/icons';
+import { CopyOutlined, SaveOutlined, DeleteOutlined, CheckCircleFilled, WarningFilled } from '@ant-design/icons';
 // import * as scp from 'scale-color-perceptual';
 import './App.css';
 
@@ -13,7 +13,7 @@ interface DbPageProps {
 }
 
 function DatabasePage(props: DbPageProps) {
-  const [searchResult, setSearchResult] = useState("");
+  const [searchResult, setSearchResult] = useState({key: "", value: ""});
 
   function connectHeader() {
     if (props.host.address) {
@@ -26,37 +26,71 @@ function DatabasePage(props: DbPageProps) {
     )
   }
 
-  const searchHandler: React.KeyboardEventHandler<HTMLInputElement> = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    let target = event.target as HTMLInputElement;
-    const query = `http://${props.host.address}/db/${target.value}`
+  function searchHandler(key: string) {
+    const query = `http://${props.host.address}/db/${key}`
     console.log("GET " + query)
     fetch(query)
       .then(response => response.text())
       .then(data => {
         console.log("Result:", data);
-        setSearchResult(data);
+        setSearchResult({key: key, value: data});
       });
   }
+
+  function deleteHandler(key: string) {
+    const query = `http://${props.host.address}/db/${key}`
+    console.log("DELETE " + query)
+    // todo: improve error handling. if !res.ok show an alert and don't clear results
+    fetch(query, {method: 'DELETE'})
+      .then(res => { console.log("Ok?", res.ok); return res })
+      .then(() => setSearchResult({key: key, value: ""}))
+  }
+
+  const buttons = [
+    {
+      id: "copy-button",
+      text: "Copy to clipboard",
+      icon: <CopyOutlined />,
+      handler: () => {
+        const textarea: HTMLInputElement = document.getElementById("result-textarea")! as HTMLInputElement;
+        textarea.select();
+        document.execCommand('copy');
+      }
+    },
+    {
+      id: "save-button",
+      text: "Save to database",
+      icon: <SaveOutlined />,
+      handler: () => {console.log("save button")}
+    },
+    {
+      id: "delete-button",
+      text: "Delete from database",
+      icon: <DeleteOutlined />,
+      handler: () => {
+        console.log("delete button");
+        deleteHandler(searchResult.key)
+      }
+    }
+  ];
 
   return (
     <Space direction="vertical">
       {connectHeader()}
-      <Input
+      <Search
         className="App-key-input"
         placeholder="Search for a key here..."
-        onPressEnter={searchHandler}
+        onSearch={value => searchHandler(value)}
         allowClear
       />
       <TextArea
         className="App-result-field"
-        value={searchResult}
+        id="result-textarea"
+        value={searchResult.value}
         allowClear
       />
       <div>
-        <Button className="db-button" id="search-button"><SearchOutlined /> Search</Button>
-        <Button className="db-button" id="copy-button"><CopyOutlined /> Copy to clipboard</Button>
-        <Button className="db-button" id="save-button"><SaveOutlined /> Save to database</Button>
-        <Button className="db-button" id="delete-button"><DeleteOutlined /> Delete from database</Button>
+        {buttons.map(d => { return <Button className="db-button" id={d.id} onClick={d.handler}>{d.icon} {d.text}</Button>})}
       </div>
     </Space>
   )
