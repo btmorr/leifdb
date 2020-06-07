@@ -1,7 +1,14 @@
 language: go
 
 before_install:
+  - nvm install --lts
+  - curl -o- -L https://yarnpkg.com/install.sh | bash
   - make install
+  - cd ui && yarn
 
 go:
   - 1.14.x
+
+script:
+  - make
+  - cd ui && yarn build
