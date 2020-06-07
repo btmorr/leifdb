@@ -1,47 +1,92 @@
 import React, { FunctionComponent, useState } from 'react';
 import logo from './logo.svg';
-import { Layout, Menu, Breadcrumb, Input, Button } from 'antd';
+import { Layout, Menu, Breadcrumb, Input, Button, Space, Alert } from 'antd';
 import { SearchOutlined, CopyOutlined, SaveOutlined, DeleteOutlined } from '@ant-design/icons';
 // import * as scp from 'scale-color-perceptual';
 import './App.css';
 
 const { Header, Content, Footer } = Layout;
-const { TextArea } = Input;
+const { TextArea, Search } = Input;
 
 interface DbPageProps {
-  searchTerm: string;
-  searchResult: string;
-  // clickHandler: (event: React.SyntheticEvent<KeyboardEvent>) => void;
-  clickHandler: React.KeyboardEventHandler<HTMLInputElement>;
+  host: string;
 }
 
 function DatabasePage(props: DbPageProps) {
-  // Add db search functionality (how best to ensure that searching displays
-  // results, but does not clear the input field?)
+  const [searchResult, setSearchResult] = useState("");
+
+  function connectHeader() {
+    if (props.host) {
+      return (
+        <span>Connected to: <code>{props.host}</code></span>
+      )
+    }
+    return (
+      <Alert type="error" message="Not connected to a database server--use the Admin tab to connect" showIcon />
+    )
+  }
+
+  const searchHandler: React.KeyboardEventHandler<HTMLInputElement> = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    let target = event.target as HTMLInputElement;
+    const query = `http://${props.host}/db/${target.value}`
+    console.log("GET " + query)
+    fetch(query)
+      .then(response => response.text())
+      .then(data => {
+        console.log("Result:", data);
+        setSearchResult(data);
+      });
+  }
 
   return (
-    <>
-      <Input className="App-key-input" placeholder="Search for a key here..." onPressEnter={props.clickHandler} allowClear />
-      <br />
-      <br />
-      <TextArea className="App-result-field" value={props.searchResult} allowClear />
-      <br />
-      <br />
-      <Button className="db-button" id="search-button"><SearchOutlined /> Search</Button>
-      <Button className="db-button" id="copy-button"><CopyOutlined /> Copy to clipboard</Button>
-      <Button className="db-button" id="save-button"><SaveOutlined /> Save to database</Button>
-      <Button className="db-button" id="delete-button"><DeleteOutlined /> Delete from database</Button>
-      <br />
-      <br />
-    </>
+    <Space direction="vertical">
+      {connectHeader()}
+      <Input
+        className="App-key-input"
+        placeholder="Search for a key here..."
+        onPressEnter={searchHandler}
+        allowClear
+      />
+      <TextArea
+        className="App-result-field"
+        value={searchResult}
+        allowClear
+      />
+      <div>
+        <Button className="db-button" id="search-button"><SearchOutlined /> Search</Button>
+        <Button className="db-button" id="copy-button"><CopyOutlined /> Copy to clipboard</Button>
+        <Button className="db-button" id="save-button"><SaveOutlined /> Save to database</Button>
+        <Button className="db-button" id="delete-button"><DeleteOutlined /> Delete from database</Button>
+      </div>
+    </Space>
   )
 }
 
-function AdminPage() {
+interface AdminPageProps {
+  setHost: React.Dispatch<React.SetStateAction<string>>;
+}
+
+function AdminPage(props:AdminPageProps) {
+
+  function tryConnect(address: string, handler: React.Dispatch<React.SetStateAction<string>>) {
+    const query = `http://${address}/health`
+    fetch(query)
+      .then(res => handler(address));
+  }
+
   return (
-    <>
-      Nothing here yet
-    </>
+    <Space direction="vertical">
+      Enter the address of a LeifDb server to connect to:
+      <Search
+        placeholder="localhost:8080"
+        onSearch={value => { tryConnect(value, props.setHost) }}
+        style={{ width: 300 }}
+      />
+      <span>
+        Address should be in the form "<code>host:port</code>",
+        without quote marks (example: <code>192.168.0.3:8080</code>)
+      </span>
+    </Space>
   )
 }
 
@@ -57,16 +102,17 @@ type Page = 'Home' | 'Database' | 'Admin';
 
 interface AppContentProps {
   page: Page;
-  searchTerm: string;
-  searchResult: string;
-  searchHandler: React.KeyboardEventHandler<HTMLInputElement>;
+  host: string;
+  setHost: React.Dispatch<React.SetStateAction<string>>;
 }
 
 function AppContent(props:AppContentProps) {
   const pages: Record<Page, JSX.Element> = {
     Home: <HomePage />,
-    Database: <DatabasePage searchTerm={props.searchTerm} searchResult={props.searchResult} clickHandler={props.searchHandler}/>,
-    Admin: <AdminPage />
+    Database: <DatabasePage
+      host={props.host}/>,
+    Admin: <AdminPage
+      setHost={props.setHost}/>
   };
 
   return (
@@ -118,27 +164,12 @@ function AppFooter() {
 
 const App:FunctionComponent<{ initialPage?: Page }> = ({ initialPage = "Database" }) => {
   const [currentPage, setCurrentPage] = useState(initialPage);
-  const [currentSearch, setCurrentSearch] = useState("");
-  const [searchResults, setSearchResults] = useState("");
+  const [host, setHost] = useState("");
   // Get currently selected header tab and send it to AppContent props
   // to choose which page content to display
 
   // const colors = [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1].map(scp.magma);
   // colors.forEach((i) => {console.log(i)});
-
-  const searchHandler: React.KeyboardEventHandler<HTMLInputElement> = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    let target = event.target as HTMLInputElement;
-    setCurrentSearch(target.value);
-
-    const query = `http://localhost:8080/db/${target.value}`
-    console.log("GET " + query)
-    fetch(query)
-      .then(response => response.text())
-      .then(data => {
-        console.log("Result:", data);
-        setSearchResults(data);
-      });
-  }
 
   return (
     <Layout className="layout">
@@ -148,9 +179,8 @@ const App:FunctionComponent<{ initialPage?: Page }> = ({ initialPage = "Database
       />
       <AppContent
         page={currentPage}
-        searchTerm={currentSearch}
-        searchResult={searchResults}
-        searchHandler={searchHandler}
+        host={host}
+        setHost={setHost}
       />
       <AppFooter />
     </Layout>
