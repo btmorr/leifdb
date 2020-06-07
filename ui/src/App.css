@@ -19,6 +19,11 @@
   color: #61dafb;
 }
 
+.site-card-border-less-wrapper {
+  padding: 30px;
+  background: #ececec;
+}
+
 @keyframes App-logo-spin {
   from {
     transform: rotate(0deg);
