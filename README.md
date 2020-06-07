@@ -85,6 +85,10 @@ Or on Windows:
 ./leifdb.exe
 ```
 
+## UI
+
+There's a very basic front end! Check out the [readme](./ui/README.md) in that directory for directions on installing and running it.
+
 ## Endpoints
 
 ### Database requests
@@ -100,14 +104,14 @@ You can also view and interact with endpoints via the auto-generated [Swagger AP
 CORS is enabled, and you can double-check to make sure that [preflight requests] are handled correctly by doing:
 
 ```
-curl -X OPTIONS -D - -H 'Origin: http://foo.com' -H 'Access-Control-Request-Method: POST' localhost:8080/db/testKey?value=something
+curl -X OPTIONS -D - -H 'Origin: http://foo.com' -H 'Access-Control-Request-Method: PUT' localhost:8080/db/testKey?value=something
 ```
 
 Server should respond with roughly:
 
 ```
 HTTP/1.1 200 OK
-Access-Control-Allow-Methods: POST
+Access-Control-Allow-Methods: PUT
 Access-Control-Allow-Origin: *
 Vary: Origin
 Vary: Access-Control-Request-Method
