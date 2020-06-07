@@ -85,6 +85,10 @@ Or on Windows:
 ./leifdb.exe
 ```
 
+## UI
+
+There's a very basic front end! Check out the [readme](./ui/README.md) in that directory for directions on installing and running it.
+
 ## Endpoints
 
 ### Database requests

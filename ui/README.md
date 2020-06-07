@@ -1,14 +1,12 @@
 # LeifDb UI
 
-
 🚧 **Under heavy construction -- contributions welcome!** 🚧
 
 This project provides a simple front end for interacting with a LeifDb server.
 
-Currently, it is entirely static. Current component breakdown is open to revision. Desired functionality:
-- tabs on the nav-bar should render different body sections
-- the database tab should have a search bar with an input that lets the user enter a key, and it should query the server and return the value for that key in the result text field, and provide buttons for search/copy/save/delete
-- the admin tab should query the server for its configuration, and then render a card for each and send health checks to display their status (server will have to be modified to provide configuration info)
+Currently, search works by entering a term into the text input bar and hitting 'Enter'. It currently assumes there is a LeifDb server running at localhost:8080. The buttons don't do anything yet, and there isn't any content for the home or admin pages.
+
+The UI does not currently include write functionality. To see the UI in action, you'll need to populate the database with at least one value. The easiest way to do that currently is to launch the server and then use the PUT section of the server's [Swagger page](http://localhost:8080/swagger/index.html) to send at least one key-value pair. Then, you should be able to use the UI to search for the same key.
 
 ## Install
 
@@ -24,10 +22,9 @@ In this directory, you can run:
 
 ### `yarn start`
 
-Runs the app in the development mode.
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+Runs the app in the development mode--open [http://localhost:3000](http://localhost:3000) to view it in the browser
 
-The page will reload if you make edits, and you will see any lint errors in the console.
+The page will reload if you make edits, and you will see any lint errors in the console
 
 ### `yarn test`
 
