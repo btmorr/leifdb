@@ -9,16 +9,12 @@ const { Header, Content, Footer } = Layout;
 const { TextArea, Search } = Input;
 
 interface DbPageProps {
-  searchTerm: string;
-  searchResult: string;
   host: string;
-  // clickHandler: (event: React.SyntheticEvent<KeyboardEvent>) => void;
-  clickHandler: React.KeyboardEventHandler<HTMLInputElement>;
 }
 
 function DatabasePage(props: DbPageProps) {
-  // Add db search functionality (how best to ensure that searching displays
-  // results, but does not clear the input field?)
+  const [currentSearch, setCurrentSearch] = useState("");
+  const [searchResult, setSearchResult] = useState("");
 
   function connectHeader() {
     if (props.host) {
@@ -31,18 +27,32 @@ function DatabasePage(props: DbPageProps) {
     )
   }
 
+  const searchHandler: React.KeyboardEventHandler<HTMLInputElement> = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    let target = event.target as HTMLInputElement;
+    setCurrentSearch(target.value);
+
+    const query = `http://${props.host}/db/${target.value}`
+    console.log("GET " + query)
+    fetch(query)
+      .then(response => response.text())
+      .then(data => {
+        console.log("Result:", data);
+        setSearchResult(data);
+      });
+  }
+
   return (
     <Space direction="vertical">
       {connectHeader()}
       <Input
         className="App-key-input"
         placeholder="Search for a key here..."
-        onPressEnter={props.clickHandler}
+        onPressEnter={searchHandler}
         allowClear
       />
       <TextArea
         className="App-result-field"
-        value={props.searchResult}
+        value={searchResult}
         allowClear
       />
       <div>
@@ -95,9 +105,6 @@ type Page = 'Home' | 'Database' | 'Admin';
 
 interface AppContentProps {
   page: Page;
-  searchTerm: string;
-  searchResult: string;
-  searchHandler: React.KeyboardEventHandler<HTMLInputElement>;
   host: string;
   setHost: React.Dispatch<React.SetStateAction<string>>;
 }
@@ -106,9 +113,6 @@ function AppContent(props:AppContentProps) {
   const pages: Record<Page, JSX.Element> = {
     Home: <HomePage />,
     Database: <DatabasePage
-      searchTerm={props.searchTerm}
-      searchResult={props.searchResult}
-      clickHandler={props.searchHandler}
       host={props.host}/>,
     Admin: <AdminPage
       setHost={props.setHost}/>
@@ -163,28 +167,12 @@ function AppFooter() {
 
 const App:FunctionComponent<{ initialPage?: Page }> = ({ initialPage = "Database" }) => {
   const [currentPage, setCurrentPage] = useState(initialPage);
-  const [currentSearch, setCurrentSearch] = useState("");
-  const [searchResults, setSearchResults] = useState("");
   const [host, setHost] = useState("");
   // Get currently selected header tab and send it to AppContent props
   // to choose which page content to display
 
   // const colors = [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1].map(scp.magma);
   // colors.forEach((i) => {console.log(i)});
-
-  const searchHandler: React.KeyboardEventHandler<HTMLInputElement> = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    let target = event.target as HTMLInputElement;
-    setCurrentSearch(target.value);
-
-    const query = `http://${host}/db/${target.value}`
-    console.log("GET " + query)
-    fetch(query)
-      .then(response => response.text())
-      .then(data => {
-        console.log("Result:", data);
-        setSearchResults(data);
-      });
-  }
 
   return (
     <Layout className="layout">
@@ -194,9 +182,6 @@ const App:FunctionComponent<{ initialPage?: Page }> = ({ initialPage = "Database
       />
       <AppContent
         page={currentPage}
-        searchTerm={currentSearch}
-        searchResult={searchResults}
-        searchHandler={searchHandler}
         host={host}
         setHost={setHost}
       />
