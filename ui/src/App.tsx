@@ -13,7 +13,6 @@ interface DbPageProps {
 }
 
 function DatabasePage(props: DbPageProps) {
-  const [currentSearch, setCurrentSearch] = useState("");
   const [searchResult, setSearchResult] = useState("");
 
   function connectHeader() {
@@ -29,8 +28,6 @@ function DatabasePage(props: DbPageProps) {
 
   const searchHandler: React.KeyboardEventHandler<HTMLInputElement> = (event: React.KeyboardEvent<HTMLInputElement>) => {
     let target = event.target as HTMLInputElement;
-    setCurrentSearch(target.value);
-
     const query = `http://${props.host}/db/${target.value}`
     console.log("GET " + query)
     fetch(query)
