@@ -1,19 +1,23 @@
 import React, { FunctionComponent, useState } from 'react';
 import logo from './logo.svg';
-import { Layout, Menu, Breadcrumb, Input, Button, Space, Alert, Card } from 'antd';
-import { CopyOutlined, SaveOutlined, DeleteOutlined, CheckCircleFilled, WarningFilled } from '@ant-design/icons';
+import { Layout, Menu, Breadcrumb, Input, Button, Space, Alert, Card, Select } from 'antd';
+import { SearchOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, CheckCircleFilled, WarningFilled } from '@ant-design/icons';
 // import * as scp from 'scale-color-perceptual';
 import './App.css';
 
 const { Header, Content, Footer } = Layout;
 const { TextArea, Search } = Input;
+const { Option } = Select;
+
+type Mode = 'ModeSearch' | 'ModeSet' | 'ModeDelete';
 
 interface DbPageProps {
   host: Server;
 }
 
 function DatabasePage(props: DbPageProps) {
-  const [searchResult, setSearchResult] = useState({key: "", value: ""});
+  const [kv, setKV] = useState({key: "", value: ""});
+  const [mode, setMode] = useState<Mode>("ModeSearch");
 
   function connectHeader() {
     if (props.host.address) {
@@ -33,7 +37,17 @@ function DatabasePage(props: DbPageProps) {
       .then(response => response.text())
       .then(data => {
         console.log("Result:", data);
-        setSearchResult({key: key, value: data});
+        setKV({key: kv.key, value: data});
+      });
+  }
+
+  function setHandler(key: string) {
+    const query = `http://${props.host.address}/db/${key}?value=${kv.value}`
+    console.log("PUT " + query)
+    fetch(query, {method: 'PUT'})
+      .then(response => response.text())
+      .then(data => {
+        console.log("Result:", data);
       });
   }
 
@@ -43,7 +57,7 @@ function DatabasePage(props: DbPageProps) {
     // todo: improve error handling. if !res.ok show an alert and don't clear results
     fetch(query, {method: 'DELETE'})
       .then(res => { console.log("Ok?", res.ok); return res })
-      .then(() => setSearchResult({key: key, value: ""}))
+      .then(() => setKV({key: kv.key, value: ""}))
   }
 
   const buttons = [
@@ -57,38 +71,56 @@ function DatabasePage(props: DbPageProps) {
         document.execCommand('copy');
       }
     },
-    {
-      id: "save-button",
-      text: "Save to database",
-      icon: <SaveOutlined />,
-      handler: () => {console.log("save button")}
-    },
-    {
-      id: "delete-button",
-      text: "Delete from database",
-      icon: <DeleteOutlined />,
-      handler: () => {
-        console.log("delete button");
-        deleteHandler(searchResult.key)
-      }
-    }
+    // {
+    //   id: "save-button",
+    //   text: "Save to database",
+    //   icon: <SaveOutlined />,
+    //   handler: () => {console.log("save button")}
+    // },
+    // {
+    //   id: "delete-button",
+    //   text: "Delete from database",
+    //   icon: <DeleteOutlined />,
+    //   handler: () => {
+    //     console.log("delete button");
+    //     deleteHandler(kv.key);
+    //   }
+    // }
   ];
+
+  const resultElement: Record<Mode, JSX.Element> = {
+    ModeSearch: <TextArea className="App-result-field" id="result-textarea" value={kv.value} />,
+    ModeSet:    <TextArea className="App-result-field" id="result-textarea" onChange={e => {setKV({key: kv.key, value: e.target.value})}} allowClear />,
+    ModeDelete: <TextArea className="App-result-field" id="result-textarea" value={kv.value} />
+  }
 
   return (
     <Space direction="vertical">
       {connectHeader()}
-      <Search
-        className="App-key-input"
-        placeholder="Search for a key here..."
-        onSearch={value => searchHandler(value)}
-        allowClear
-      />
-      <TextArea
-        className="App-result-field"
-        id="result-textarea"
-        value={searchResult.value}
-        allowClear
-      />
+      <Input.Group compact>
+        <Select
+          defaultValue="ModeSearch"
+          onSelect={(val, opt) => setMode(val)}
+        >
+          <Option value="ModeSearch"><SearchOutlined />Search</Option>
+          <Option value="ModeSet"><SaveOutlined /> Set</Option>
+          <Option value="ModeDelete"><DeleteOutlined />Delete</Option>
+        </Select>
+        <Input.Search
+          className="App-key-input"
+          placeholder="Search for a key here..."
+          onSearch={key => {
+            switch(mode) {
+              case "ModeSearch": searchHandler(key); break;
+              case "ModeSet": setHandler(key); break;
+              case "ModeDelete": deleteHandler(key); break;
+              default: console.log("invalid select option:", mode);
+            }
+          }}
+          allowClear
+        />
+      </Input.Group>
+      {resultElement[mode]}
       <div>
         {buttons.map(d => { return <Button className="db-button" id={d.id} onClick={d.handler}>{d.icon} {d.text}</Button>})}
       </div>
