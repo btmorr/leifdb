@@ -165,7 +165,7 @@ func TestReconcileLogs(t *testing.T) {
 
 	testCases := []ReconcileTestCase{
 		{
-			Name:  "Empty mind, empty body",
+			Name:  "Empty log and request",
 			Store: emptyLog,
 			Request: &raft.AppendRequest{
 				Term:         0,
@@ -176,7 +176,7 @@ func TestReconcileLogs(t *testing.T) {
 				Entries:      []*raft.LogRecord{}},
 			Expected: emptyLog},
 		{
-			Name:  "Empty mind, full body",
+			Name:  "Empty log, populated request",
 			Store: emptyLog,
 			Request: &raft.AppendRequest{
 				Term:         3,
@@ -187,7 +187,7 @@ func TestReconcileLogs(t *testing.T) {
 				Entries:      firstThree},
 			Expected: starterLog},
 		{
-			Name:  "Full mind, full body",
+			Name:  "Populated log and request",
 			Store: starterLog,
 			Request: &raft.AppendRequest{
 				Term:         6,
@@ -198,7 +198,18 @@ func TestReconcileLogs(t *testing.T) {
 				Entries:      nextTwo},
 			Expected: appendLog},
 		{
-			Name:  "Incongruous mind",
+			Name:  "Match but truncate",
+			Store: appendLog,
+			Request: &raft.AppendRequest{
+				Term:         6,
+				LeaderId:     "localhost:8181",
+				PrevLogIndex: 2,
+				PrevLogTerm:  3,
+				LeaderCommit: -1,
+				Entries:      []*raft.LogRecord{nextTwo[0]}},
+			Expected: &raft.LogStore{Entries: appendLog.Entries[:4]}},
+		{
+			Name:  "Mismatch and add",
 			Store: starterLog,
 			Request: &raft.AppendRequest{
 				Term:         6,
@@ -210,6 +221,11 @@ func TestReconcileLogs(t *testing.T) {
 			Expected: overlapLog}}
 
 	for _, tc := range testCases {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Recovered panic in %s: %v", tc.Name, r)
+			}
+		}()
 		result := reconcileLogs(tc.Store, tc.Request)
 		testutil.CompareLogs(t, tc.Name, result, tc.Expected)
 	}
