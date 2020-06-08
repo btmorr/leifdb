@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -655,9 +656,12 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 	var msg string
 	if req.Term <= n.Term {
 		// Increment term, vote for same node as previous term (is this correct?)
-		n.setTerm(n.Term+1, n.votedFor)
 		vote = false
-		msg = "Expired term vote received, incrementing term"
+		msg = "Expired term vote received"
+		if n.State == Leader {
+			n.setTerm(n.Term+1, n.votedFor)
+			msg = msg + ", incrementing term"
+		}
 	} else if !n.CheckForeignNode(req.CandidateId, n.otherNodes) {
 		vote = false
 		msg = "Unknown foreign node: " + req.CandidateId
@@ -688,10 +692,10 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 	// reply false if req term < current term
 	if term < n.Term {
 		success = false
-	}
-	if term == n.Term && leaderId != n.votedFor {
-		msg1 := "Append request from LeaderId mismatch for this term. "
-		msg2 := "Got: " + leaderId + " (voted for: " + n.votedFor + "). "
+	} else if term == n.Term && leaderId != n.votedFor {
+		termStr := strconv.FormatInt(n.Term, 10)
+		msg1 := "Append request from LeaderId mismatch for term " + termStr
+		msg2 := ". Got: " + leaderId + " (voted for: " + n.votedFor + "). "
 		msg3 := "Has the configuration changed?"
 		log.Error().Msg(msg1 + msg2 + msg3)
 		success = false
@@ -797,6 +801,10 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 		// For any valid append received during an election, cancel election
 		if n.State != Follower {
 			n.setState(Follower)
+		}
+		// update term if necessary
+		if req.Term > n.Term {
+			n.setTerm(req.Term, req.LeaderId)
 		}
 		// only reset the election timer on append from a valid leader
 		// defer?
