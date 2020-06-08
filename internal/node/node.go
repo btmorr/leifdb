@@ -706,6 +706,10 @@ func reconcileLogs(logStore *raft.LogStore, body *raft.AppendRequest) *raft.LogS
 	if body.PrevLogIndex < int64(len(logStore.Entries)-1) {
 		overlappingEntries := logStore.Entries[body.PrevLogIndex+1:]
 		for i, rec := range overlappingEntries {
+			if i >= len(body.Entries) {
+				mismatchIdx = body.PrevLogIndex + int64(i)
+				break
+			}
 			if rec.Term != body.Entries[i].Term {
 				mismatchIdx = body.PrevLogIndex + 1 + int64(i)
 				break
