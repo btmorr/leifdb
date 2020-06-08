@@ -42,7 +42,7 @@ function DatabasePage(props: DbPageProps) {
   }
 
   function setHandler(key: string) {
-    const query = `http://${props.host.address}/db/${key}?value=${kv.value}`
+    const query = `http://${props.host.address}/db/${key}?value=${encodeURI(kv.value)}`
     console.log("PUT " + query)
     fetch(query, {method: 'PUT'})
       .then(response => response.text())
