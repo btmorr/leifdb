@@ -4,9 +4,11 @@
 
 This project provides a simple front end for interacting with a LeifDb server.
 
-Currently, search works by entering a term into the text input bar and hitting 'Enter'. Before searching, use the Admin page to enter the address of the HTTP interface of a LeifDb server. The copy and delete buttons on the Database page work ('copy' populates the clipboard with the test of the result field, and 'delete' deletes the current search key from the database if it exists).
+When you open the app, you will land on the Admin page. This page allows you to enter the address of the HTTP interface of a LeifDb server. A card will populate with the status of the server. Once you are connected to a healthy server, you can click on the Database tab at the top to interact with it.
 
-The UI does not currently include write functionality. To see the UI in action, you'll need to populate the database with at least one value. The easiest way to do that currently is to launch the server and then use the PUT section of the server's [Swagger page](http://localhost:8080/swagger/index.html) to send at least one key-value pair. Then, you should be able to use the UI to search for the same key.
+The dropdown menu allows you to select between "Search", "Set", and "Delete" actions. The top bar is for keys, and the lower text area is for values. Enter a key, and a value for "Set", and then click the search icon.
+
+If you want to interact with the database separately from this UI (for instance, to test the UI), the easiest way to do that currently is to launch the server and then use the GET, PUT, and DELETE sections of the server's [Swagger page](http://localhost:8080/swagger/index.html).
 
 ## Install
 

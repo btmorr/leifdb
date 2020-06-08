@@ -87,7 +87,7 @@ Or on Windows:
 
 ## UI
 
-There's a very basic front end! Check out the [readme](./ui/README.md) in that directory for directions on installing and running it.
+There's a very basic front end! It's capable to connecting to a server, and doing read/write/delete actions. Check out the [readme](./ui/README.md) in that directory for directions on installing and running it.
 
 ## Endpoints
 
@@ -254,7 +254,6 @@ Raft complete (additional functionality in the [full Raft paper]):
 General application:
 - Add scripts for starting a cluster / changing membership (probably something to the tune of [Docker] + [Kubernetes] + [Terraform])
 - Performance benchmarking (see the "Measurement" section of [Paxos Made Live] for a couple of ways to set up benchmarks) (also, compare performance with differing levels of debug logging turned on)
-- Dashboard for visualization / management of a cluster? (a la [Consul])
 
 ## Prior art
 
