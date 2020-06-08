@@ -336,7 +336,7 @@ func (n *Node) DoElection() {
 
 	log.Info().
 		Int64("Term", n.Term).
-		Int("clusterSize", len(n.otherNodes)).
+		Int("clusterSize", len(n.otherNodes)+1).
 		Int("needed", majority).
 		Msg("Becoming candidate")
 
@@ -357,7 +357,9 @@ func (n *Node) DoElection() {
 	if numVotes >= majority {
 		voteLog.Bool("success", true).Msg("Election succeeded")
 		n.setState(Leader)
-		log.Trace().Msg("Becoming leader")
+		log.Info().
+			Int64("term", n.Term).
+			Msg("Becoming leader")
 
 		n.electionTimer.Stop()
 		select {
@@ -508,7 +510,7 @@ func (n *Node) doAppend(retriesRemaining int) error {
 			defer wg.Done()
 			err := n.requestAppend(k)
 			if err != nil {
-				log.Error().Err(err).Msgf("Error requesting append from %s", k)
+				log.Debug().Err(err).Msgf("Error requesting append from %s", k)
 			} else {
 				numAppended++
 			}
@@ -556,8 +558,10 @@ func checkForeignNode(addr string, known map[string]*ForeignNode) bool {
 // NewNode initializes a Node with a randomized election timeout between
 // 150-300ms, and starts the election timer
 func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
-	lowerBound := 150
-	upperBound := 300
+	// todo: make these configurable
+	upperBound := 600
+	lowerBound := upperBound / 2
+
 	ms := (rand.Int() % lowerBound) + (upperBound - lowerBound)
 	electionTimeout := time.Duration(ms) * time.Millisecond
 
@@ -723,7 +727,7 @@ func reconcileLogs(logStore *raft.LogStore, body *raft.AppendRequest) *raft.LogS
 	// append any entries not already in log
 	offset := int64(len(logStore.Entries)-1) - body.PrevLogIndex
 	newLogs := body.Entries[offset:]
-	log.Debug().Msgf("Appending %d entries", len(newLogs))
+	log.Info().Msgf("Appending %d entries from %s", len(newLogs), body.LeaderId)
 	return &raft.LogStore{Entries: append(logStore.Entries, newLogs...)}
 }
 
@@ -754,7 +758,7 @@ func (n *Node) applyCommittedLogs(commitIdx int64) {
 			}
 		}
 
-		log.Debug().
+		log.Info().
 			Int64("commit", n.commitIndex).
 			Msg("Commit updated")
 	}
