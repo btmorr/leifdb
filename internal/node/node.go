@@ -282,7 +282,8 @@ func (n *Node) startAppendTicker() {
 		for {
 			select {
 			case <-n.haltAppend:
-				log.Debug().Msg("No longer leader, halting log append")
+				// this may not be needed (in favor of explicit Stop)
+				log.Info().Msg("No longer leader, halting log append")
 				// defer?
 				n.resetElectionTimer()
 				return
@@ -296,8 +297,8 @@ func (n *Node) startAppendTicker() {
 }
 
 // requestVote sends a request for vote to a single other node (see `DoElection`)
-func (n *Node) requestVote(host string) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+func (n *Node) requestVote(host string) (*raft.VoteReply, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*5)
 	defer cancel()
 
 	voteRequest := &raft.VoteRequest{
@@ -307,15 +308,11 @@ func (n *Node) requestVote(host string) (bool, error) {
 		LastLogTerm:  0}
 
 	vote, err := n.otherNodes[host].Client.RequestVote(ctx, voteRequest)
-	granted := false
 	if err != nil {
 		log.Error().Err(err).Msgf("Error requesting vote from %s", host)
-	} else {
-		granted = vote.VoteGranted
 	}
 
-	// is this access safe?
-	return granted, err
+	return vote, err
 }
 
 // DoElection sends out requests for votes to each other node in the Raft cluster.
@@ -342,41 +339,65 @@ func (n *Node) DoElection() {
 		Msg("Becoming candidate")
 
 	n.resetElectionTimer()
+	go func() {
+		<-n.electionTimer.C
+		n.DoElection()
+	}()
 	numVotes := 1
+	maxTermSeen := n.Term
+	maxTermSeenSource := n.votedFor
 	for k := range n.otherNodes {
-		// put this in a goroutine and use a sync.WaitGroup to collect
+		// put this in a goroutine and use a sync.WaitGroup to collect?
 		vote, err := n.requestVote(k)
 		log.Trace().Msg("got a vote")
-		if err == nil && vote {
+		if err != nil {
+			continue
+		}
+		if vote.VoteGranted {
 			log.Trace().Msg("it's a 'yay'")
 			numVotes = numVotes + 1
+		} else {
+			if vote.Term > maxTermSeen {
+				maxTermSeen = vote.Term
+				maxTermSeenSource = k
+			}
 		}
 	}
 	voteLog := log.Info().
 		Int("needed", majority).
 		Int("got", numVotes)
-	if numVotes >= majority {
+	if numVotes < majority {
+		voteLog.Bool("success", false).Msg("Election failed")
+		if maxTermSeen > n.Term {
+			log.Info().
+				Int64("max response term", maxTermSeen).
+				Str("other node", maxTermSeenSource).
+				Msg("Updating term to max seen")
+			n.setTerm(maxTermSeen, maxTermSeenSource)
+		}
+		n.setState(Follower)
+		log.Trace().Msg("Becoming follower")
+		n.resetElectionTimer()
+	} else {
 		voteLog.Bool("success", true).Msg("Election succeeded")
 		n.setState(Leader)
 		log.Info().
 			Int64("term", n.Term).
 			Msg("Becoming leader")
 
-		n.electionTimer.Stop()
-		select {
-		case <-n.electionTimer.C:
-		default:
+		if !n.electionTimer.Stop() {
+			select {
+			case <-n.electionTimer.C:
+			default:
+			}
 		}
-		log.Debug().Msg("Stopping election timer, starting append ticker")
+		log.Info().Msg("Stopping election timer, starting append ticker")
 		for k := range n.otherNodes {
 			n.otherNodes[k].MatchIndex = -1
 			n.otherNodes[k].NextIndex = int64(len(n.Log.Entries))
 		}
+		n.doAppend(0)
 		n.startAppendTicker()
-	} else {
-		voteLog.Bool("success", false).Msg("Election failed")
-		n.setState(Follower)
-		log.Trace().Msg("Becoming follower")
 	}
 }
 
@@ -441,7 +462,7 @@ func (n *Node) commitRecords() {
 // requestAppend sends append to one other node with new record(s) and updates
 // match index for that node if successful
 func (n *Node) requestAppend(host string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*50)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*5)
 	defer cancel()
 
 	prevLogIndex := n.otherNodes[host].MatchIndex
@@ -511,7 +532,7 @@ func (n *Node) doAppend(retriesRemaining int) error {
 			defer wg.Done()
 			err := n.requestAppend(k)
 			if err != nil {
-				log.Debug().Err(err).Msgf("Error requesting append from %s", k)
+				log.Warn().Err(err).Msgf("Error requesting append from %s", k)
 			} else {
 				numAppended++
 			}
@@ -619,10 +640,6 @@ func (n *Node) Halt() {
 	}
 
 	n.appendTicker.Stop()
-	select {
-	case <-n.appendTicker.C:
-	default:
-	}
 }
 
 // resetElectionTimer restarts the countdown to election when a Raft node is a
@@ -636,10 +653,10 @@ func (n *Node) resetElectionTimer() {
 	}
 	n.electionTimer.Reset(n.ElectionTimeout)
 
-	go func() {
-		<-n.electionTimer.C
-		n.DoElection()
-	}()
+	// go func() {
+	// 	<-n.electionTimer.C
+	// 	n.DoElection()
+	// }()
 }
 
 // AddForeignNode updates the list of known other members of the raft cluster
@@ -667,16 +684,20 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 		msg = "Unknown foreign node: " + req.CandidateId
 	} else {
 		msg = "Voting"
+		n.resetElectionTimer()
+
+		if n.State == Leader {
+			n.appendTicker.Stop()
+			go func() {
+				<-n.electionTimer.C
+				n.DoElection()
+			}()
+		}
 		// todo: check candidate's log details
 		vote = true
 
 		n.setTerm(req.Term, req.CandidateId)
-		if n.State == Leader {
-			n.haltAppend <- true
-		}
 		n.setState(Follower)
-		// defer?
-		n.resetElectionTimer()
 	}
 	log.Info().
 		Int64("Term", n.Term).
@@ -791,8 +812,12 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 		success = false
 	} else {
 		// Valid request, and all required logs present
+		// only reset the election timer on append from a valid leader
+		n.resetElectionTimer()
+
 		if len(req.Entries) > 0 {
 			n.Log = reconcileLogs(n.Log, req)
+			n.setLog(n.Log.Entries)
 		}
 		n.applyCommittedLogs(req.LeaderCommit)
 		success = true
@@ -806,9 +831,6 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 		if req.Term > n.Term {
 			n.setTerm(req.Term, req.LeaderId)
 		}
-		// only reset the election timer on append from a valid leader
-		// defer?
-		n.resetElectionTimer()
 	}
 	// finally
 	return &raft.AppendReply{Term: n.Term, Success: success}
