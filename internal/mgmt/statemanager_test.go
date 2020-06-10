@@ -1,9 +1,13 @@
 // +build xfail
 
+// This test is timing-dependent, and can be flaky on a given run. Until we have
+// a better way of testing the timer logic, this test is run separately on CI
+// such that a failure on this step doesn't count as a failed build (but will
+// still be visible in the logs)
+
 package mgmt
 
 import (
-	"fmt"
 	"testing"
 	"time"
 )
@@ -11,8 +15,6 @@ import (
 func TestManager(t *testing.T) {
 	electionTimeout := time.Second / 4
 	appendInterval := time.Millisecond * 20
-	fmt.Println("===>", electionTimeout)
-	fmt.Println("--->", appendInterval)
 
 	electionCounter := 0
 	appendCounter := 0
@@ -21,13 +23,13 @@ func TestManager(t *testing.T) {
 	resetFlag := make(chan bool)
 
 	mgmt := NewStateManager(
-		resetFlag,       // reset channel
-		electionTimeout, // election timeout
+		resetFlag,
+		electionTimeout,
 		func() bool { // election job
 			electionCounter++
 			return electionShouldSucceed
 		},
-		appendInterval, // append interval
+		appendInterval,
 		func() { // append job
 			appendCounter++
 			return
