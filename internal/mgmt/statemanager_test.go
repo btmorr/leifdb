@@ -3,14 +3,16 @@
 package mgmt
 
 import (
-	// "fmt"
+	"fmt"
 	"testing"
 	"time"
 )
 
 func TestManager(t *testing.T) {
-	electionTimeout := time.Second
-	appendInterval := time.Millisecond * 50
+	electionTimeout := time.Second / 4
+	appendInterval := time.Millisecond * 20
+	fmt.Println("===>", electionTimeout)
+	fmt.Println("--->", appendInterval)
 
 	electionCounter := 0
 	appendCounter := 0
@@ -36,7 +38,7 @@ func TestManager(t *testing.T) {
 		t.Errorf("Expected state to be Follower but got %s\n", mgmt.state.stateType())
 	}
 	time.Sleep(electionTimeout + time.Millisecond*2)
-	time.Sleep(time.Millisecond * 20)
+	time.Sleep(appendInterval)
 	if electionCounter != 1 {
 		t.Errorf("Expected %d elections, got %d\n", 1, electionCounter)
 	}
@@ -63,7 +65,7 @@ func TestManager(t *testing.T) {
 		t.Errorf("Expected state to be Follower, but got %s\n", mgmt.state.stateType())
 	}
 	time.Sleep(electionTimeout + time.Millisecond*2)
-	time.Sleep(time.Millisecond * 20)
+	time.Sleep(appendInterval)
 	if electionCounter != 2 {
 		t.Errorf("Expected %d elections, got %d\n", 2, electionCounter)
 	}
@@ -89,7 +91,7 @@ func TestManager(t *testing.T) {
 		t.Errorf("Expected state to still be Follower after resets, but got %s\n", mgmt.state.stateType())
 	}
 	time.Sleep(electionTimeout + time.Millisecond*2)
-	time.Sleep(time.Millisecond * 20)
+	time.Sleep(appendInterval)
 	if electionCounter != 3 {
 		t.Errorf("Expected %d elections, got %d\n", 3, electionCounter)
 	}
