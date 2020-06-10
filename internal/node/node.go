@@ -94,12 +94,11 @@ type ForeignNodeChecker func(string, map[string]*ForeignNode) bool
 // algorithm's state machine. At any one time, its role may be Leader, Candidate,
 // or Follower, and have different responsibilities depending on its role
 type Node struct {
-	NodeId   string
-	State    mgmt.Role
-	Term     int64
-	votedFor string
-	Reset    chan bool
-	// Halt             chan bool
+	NodeId           string
+	State            mgmt.Role
+	Term             int64
+	votedFor         string
+	Reset            chan bool
 	otherNodes       map[string]*ForeignNode
 	CheckForeignNode ForeignNodeChecker
 	commitIndex      int64
@@ -192,12 +191,6 @@ func (n *Node) resetElectionTimer() {
 	}()
 }
 
-// func (n *Node) Halt() {
-// 	go func() {
-// 		n.Halt <- true
-// 	}()
-// }
-
 // setLog records new log contents in non-volatile state, and returns the index
 // of the record in the log, or an error
 func (n *Node) setLog(newLogs []*raft.LogRecord) (int64, error) {
@@ -287,7 +280,7 @@ func (n *Node) requestVote(host string) (*raft.VoteReply, error) {
 
 	vote, err := n.otherNodes[host].Client.RequestVote(ctx, voteRequest)
 	if err != nil {
-		log.Error().Err(err).Msgf("Error requesting vote from %s", host)
+		log.Warn().Err(err).Msgf("Error requesting vote from %s", host)
 	}
 
 	return vote, err
@@ -461,7 +454,7 @@ func (n *Node) requestAppend(host string, term int64) error {
 	if n.State != mgmt.Leader {
 		// escape hatch in case this node stepped down in between the call to
 		// `SendAppend` and this point
-		log.Info().Msg("requestAppend not leader, returning")
+		log.Debug().Msg("requestAppend not leader, returning")
 		return ErrNotLeaderSend
 	}
 	if term != n.Term {
@@ -519,7 +512,7 @@ func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 			defer wg.Done()
 			err := n.requestAppend(k, term)
 			if err != nil {
-				log.Warn().Err(err).Msgf("Error requesting append from %s for term %d", k, term)
+				log.Debug().Err(err).Msgf("Error requesting append from %s for term %d", k, term)
 			} else {
 				// is this threadsafe?
 				numAppended++

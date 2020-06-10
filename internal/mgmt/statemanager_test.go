@@ -35,7 +35,6 @@ func TestManager(t *testing.T) {
 			return
 		})
 
-	// t.Skip("This test is flaky because of dependence on timing windows")
 	if mgmt.state.stateType() != Follower {
 		t.Errorf("Expected state to be Follower but got %s\n", mgmt.state.stateType())
 	}
