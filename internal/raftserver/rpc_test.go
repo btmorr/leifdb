@@ -275,7 +275,7 @@ func TestVote(t *testing.T) {
 			expectNodeState: mgmt.Follower}}
 
 	for _, tc := range testCases {
-		time.Sleep(time.Microsecond * 300)
+		time.Sleep(time.Millisecond)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
