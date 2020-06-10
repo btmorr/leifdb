@@ -8,7 +8,7 @@
 // There's probably a nicer way to do this with interfaces, but this does
 // the job for now
 
-package functionhooks
+package main
 
 import "fmt"
 

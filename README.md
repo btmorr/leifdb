@@ -50,13 +50,13 @@ To build and run the app manually on Linux/Unix:
 
 ```
 go clean
-go build -o leifdb
+go build -tags=unit,xfail -o leifdb
 ```
 
 On Windows:
 ```
 go clean
-go build -o leifdb.exe
+go build -tags=unit,xfail -o leifdb.exe
 ```
 
 Responses to client endpoints are string-formatted.
@@ -64,7 +64,7 @@ Responses to client endpoints are string-formatted.
 To manually run the test suite:
 
 ```
-go test ./...
+go test -tags=unit,xfail ./...
 ```
 
 After building the binary, to find out what command line parameters are available:
@@ -245,7 +245,6 @@ Determine which ports correspond to the leader (let's say it's the one with an H
 
 Raft basics (everything from the [short Raft paper]):
 - add log comparison check to vote handler (election restriction)
-- add more checking on most recently seen term
 
 Raft complete (additional functionality in the [full Raft paper]):
 - log compaction
@@ -259,8 +258,10 @@ General application:
 
 Aside from the Raft papers themselves, here are some related resources:
 - [The Secret Lives of Data]
-- [Eli Bendersky's blog post] [which I'm explicitly not reading until after I get an initial version of my own done so that I can muddle along and figure things out the hard way, but leaving this note here for later / for others' benefit]
+- [Eli Bendersky's blog post]
 - A [talk on Raft] from the [Consul] team
+- [Jay Kreps' article on Logs]
+- [Distributed systems for fun and profit]
 
 [Raft]: https://raft.github.io/
 [short Raft paper]: https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf
@@ -268,6 +269,8 @@ Aside from the Raft papers themselves, here are some related resources:
 [The Secret Lives of Data]: http://thesecretlivesofdata.com/raft/
 [Eli Bendersky's blog post]: https://eli.thegreenplace.net/2020/implementing-raft-part-0-introduction/
 [talk on Raft]: https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained/
+[Jay Kreps' article on Logs]: https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying
+[Distributed systems for fun and profit]: http://book.mixu.net/distsys/
 [Paxos Made Live]: https://dl.acm.org/doi/10.1145/1281100.1281103
 [OpenAPIv2.0]: http://spec.openapis.org/oas/v2.0
 

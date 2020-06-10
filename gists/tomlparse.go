@@ -2,7 +2,7 @@
 
 // Example of how to parse toml using viper
 
-package tomlparse
+package main
 
 import (
 	"bytes"

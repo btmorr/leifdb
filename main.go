@@ -5,12 +5,14 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/btmorr/leifdb/internal/configuration"
 	"github.com/btmorr/leifdb/internal/database"
+	"github.com/btmorr/leifdb/internal/mgmt"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raftserver"
 	"github.com/gin-gonic/gin"
@@ -171,7 +173,31 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to initialize node")
 	}
 
-	log.Info().Msgf("Election timeout: %s", n.ElectionTimeout.String())
+	// todo: make these configurable
+	upperBound := 1000
+	lowerBound := upperBound / 2
+
+	// Select random election timeout (in interval specified above), and set
+	// static interval for sending append requests
+	ms := (rand.Int() % lowerBound) + (upperBound - lowerBound)
+	electionTimeout := time.Duration(ms) * time.Millisecond
+	appendInterval := time.Duration(14) * time.Millisecond
+	log.Info().Msgf("Election timeout: %s", electionTimeout.String())
+	// todo: add a check that appendInterval < electionTimeout (should in
+	// practice be 10-100x smaller)
+
+	// Reference to StateManager is not kept--all coordination is done via
+	// either channels or callback hooks
+	mgmt.NewStateManager(
+		n.Reset,         // Node -> StateManager: reset election timer
+		electionTimeout, // Time to wait for election when Follower
+		n.DoElection,    // Call when election timer expires
+		appendInterval,  // Period for doing append job when Leader
+		func() {
+			if n.State == mgmt.Leader {
+				n.SendAppend(0, n.Term)
+			}
+		}) // Call when append ticker cycles
 
 	raftPortString := fmt.Sprintf(":%d", cfg.RaftPort)
 	clientPortString := fmt.Sprintf(":%d", cfg.ClientPort)

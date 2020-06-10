@@ -1,4 +1,4 @@
-// Unit tests on rpc functionality
+// +build unit
 
 package raftserver
 
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	db "github.com/btmorr/leifdb/internal/database"
+	"github.com/btmorr/leifdb/internal/mgmt"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/btmorr/leifdb/internal/testutil"
@@ -69,7 +70,10 @@ func TestAppend(t *testing.T) {
 
 	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
 
-	termRecord := &raft.TermRecord{Term: 5, VotedFor: "localhost:8181"}
+	validLeaderId := "localhost:8181"
+	invalidLeaderId := "localhost:12345"
+
+	termRecord := &raft.TermRecord{Term: 5, VotedFor: validLeaderId}
 	node.WriteTerm(config.TermFile, termRecord)
 
 	starterLog := &raft.LogStore{
@@ -98,8 +102,6 @@ func TestAppend(t *testing.T) {
 		log.Fatalln("Failed to write log file:", err)
 	}
 
-	validLeaderId := "localhost:8181"
-	invalidLeaderId := "localhost:12345"
 	prevIdx := int64(len(starterLog.Entries) - 1)
 	prevTerm := starterLog.Entries[prevIdx].Term
 	newRecord := &raft.LogRecord{
@@ -221,7 +223,6 @@ func TestAppend(t *testing.T) {
 			}
 		}
 	}
-	n.Halt()
 }
 
 type voteTestCase struct {
@@ -229,7 +230,7 @@ type voteTestCase struct {
 	request         *raft.VoteRequest
 	expectTerm      int64
 	expectVote      bool
-	expectNodeState node.Role
+	expectNodeState mgmt.Role
 }
 
 func TestVote(t *testing.T) {
@@ -239,7 +240,18 @@ func TestVote(t *testing.T) {
 	testAddr := "localhost:12345"
 	s := server{Node: n}
 	// Simulating node in leader position, rather than adding a time.Sleep
+	n.State = mgmt.Leader
 	n.DoElection()
+	// mock behavior of StateManager
+	go func() {
+		for {
+			select {
+			case <-n.Reset:
+				n.State = mgmt.Follower
+			default:
+			}
+		}
+	}()
 
 	testCases := []voteTestCase{
 		{
@@ -251,7 +263,7 @@ func TestVote(t *testing.T) {
 				LastLogTerm:  0},
 			expectTerm:      2,
 			expectVote:      false,
-			expectNodeState: node.Leader},
+			expectNodeState: mgmt.Leader},
 		{
 			name: "Vote request valid",
 			request: &raft.VoteRequest{
@@ -261,13 +273,14 @@ func TestVote(t *testing.T) {
 				LastLogTerm:  0},
 			expectTerm:      3,
 			expectVote:      true,
-			expectNodeState: node.Follower}}
+			expectNodeState: mgmt.Follower}}
 
 	for _, tc := range testCases {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
 		reply, err := s.RequestVote(ctx, tc.request)
+		time.Sleep(time.Microsecond * 300)
 		fmt.Printf("[%s] Reply: %+v\n", tc.name, reply)
 		if err != nil {
 			t.Errorf("[%s] Unexpected error: %v", tc.name, err)
@@ -294,7 +307,6 @@ func TestVote(t *testing.T) {
 				n.State)
 		}
 	}
-	n.Halt()
 
 	// --- Part 3 ---
 	// Todo:
