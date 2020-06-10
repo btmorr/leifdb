@@ -1,45 +1,45 @@
 package mgmt
 
-import (
-	"errors"
-	"time"
-)
+import "time"
 
-var (
-	ErrIncorrectState = errors.New("Incorrect state for action")
-)
+// Role is either Leader or Follower
+type Role string
 
-type role string
-
+// Follower is a read-only member of a cluster
+// Leader is a read/write member of a cluster
 const (
-	Leader   role = "Leader"
+	Leader   Role = "Leader"
 	Follower      = "Follower"
 )
 
-type State interface {
+// There is also a virtual role of Candidate when an election is in progress,
+// but for the StateManager this is not different from Follower
+
+type state interface {
 	stop()
 	restart()
-	stateType() role
+	stateType() Role
 }
 
-type LeaderState struct {
+type leaderState struct {
 	done chan bool
 	job  func()
 }
 
-func (l *LeaderState) stop() {
+func (l *leaderState) stop() {
 	l.done <- true
 	return
 }
 
-func (l *LeaderState) restart() {}
+func (l *leaderState) restart() {}
 
-func (l LeaderState) stateType() role {
+func (l leaderState) stateType() Role {
 	return Leader
 }
 
-func NewLeaderState(job func(), timeout time.Duration) *LeaderState {
-	l := &LeaderState{done: make(chan bool), job: job}
+func newLeaderState(job func(), timeout time.Duration) *leaderState {
+	l := &leaderState{done: make(chan bool), job: job}
+	l.job()
 	t := time.NewTicker(timeout)
 	go func() {
 		for {
@@ -54,13 +54,13 @@ func NewLeaderState(job func(), timeout time.Duration) *LeaderState {
 	return l
 }
 
-type FollowerState struct {
+type followerState struct {
 	timer    *time.Timer
 	timeout  time.Duration
 	election chan bool
 }
 
-func (f *FollowerState) stop() {
+func (f *followerState) stop() {
 	if !f.timer.Stop() {
 		select {
 		case <-f.timer.C:
@@ -70,19 +70,19 @@ func (f *FollowerState) stop() {
 	return
 }
 
-func (f *FollowerState) restart() {
+func (f *followerState) restart() {
 	f.stop()
 	f.timer.Reset(f.timeout)
 	return
 }
 
-func (f FollowerState) stateType() role {
+func (f followerState) stateType() Role {
 	return Follower
 }
 
-func NewFollowerState(electionFlag chan bool, timeout time.Duration) *FollowerState {
+func newFollowerState(electionFlag chan bool, timeout time.Duration) *followerState {
 	t := time.NewTimer(timeout)
-	f := &FollowerState{timer: t, timeout: timeout, election: electionFlag}
+	f := &followerState{timer: t, timeout: timeout, election: electionFlag}
 	go func() {
 		<-t.C
 		f.election <- true
@@ -91,27 +91,51 @@ func NewFollowerState(electionFlag chan bool, timeout time.Duration) *FollowerSt
 }
 
 type StateManager struct {
-	state           State
+	state           state
+	updateHook      func(r Role)
 	electionFlag    chan bool
 	electionTimeout time.Duration
 	appendTimeout   time.Duration
 	appendJob       func()
 }
 
-func (s *StateManager) changeState(newState role) {
+func (s *StateManager) changeState(newState Role) {
 	s.state.stop()
 	if newState == Leader {
-		s.state = NewLeaderState(s.appendJob, s.appendTimeout)
+		s.state = newLeaderState(s.appendJob, s.appendTimeout)
 	} else {
-		s.state = NewFollowerState(s.electionFlag, s.electionTimeout)
+		s.state = newFollowerState(s.electionFlag, s.electionTimeout)
 	}
+	s.updateHook(newState)
 }
 
-func (s *StateManager) resetTimer() {
+// ResetTimer restarts the countdown on the election timer if the current state
+// is Follower (does nothing if the current state is Leader)
+func (s *StateManager) ResetTimer() {
 	s.state.restart()
 }
 
+// BecomeFollower explicitly changes the state to Follower
+func (s *StateManager) BecomeFollower() {
+	s.changeState(Follower)
+}
+
+// NewStateManager creates a StateManager with state initialized to Follower
+// followFlag is a channel that indicates the node should reset the election
+//    timer, including becoming a Follower if the current state is Leader
+// electionTimeout is the duration a node should wait before starting an
+//     election. Events that delay an election should call `ResetTimer`. If the
+//     timer expires, the electionJob function is called
+// electionJob is a function that is called when the election timer expires,
+//     which should return a boolean designating whether the node should become
+//     a Leader (on true), or remain a Follower (on false)
+// appendTimeout is the period between append requests when a node is a Leader.
+//    The ticker ticks on this period, and calls appendJob
+// appendJob is the task that a Leader should perform after each appendTimeout
 func NewStateManager(
+	resetFlag chan bool,
+	// haltFlag chan bool,
+	updateHook func(r Role),
 	electionTimeout time.Duration,
 	electionJob func() bool,
 	appendTimeout time.Duration,
@@ -119,7 +143,8 @@ func NewStateManager(
 
 	c := make(chan bool)
 	s := &StateManager{
-		state:           NewFollowerState(c, electionTimeout),
+		state:           newFollowerState(c, electionTimeout),
+		updateHook:      updateHook,
 		electionFlag:    c,
 		electionTimeout: electionTimeout,
 		appendTimeout:   appendTimeout,
@@ -127,11 +152,11 @@ func NewStateManager(
 
 	go func() {
 		for {
-			switch {
+			select {
 			case <-s.electionFlag:
-				s.resetTimer()
+				s.ResetTimer()
 				// Note that "Candidate" state is a virtual state--in between this
-				// `resetTimer` call and the return of the following `electionJob`, the
+				// `ResetTimer` call and the return of the following `electionJob`, the
 				// state of the node corresponds to the Candidate state, but the
 				// behavior is not meaningfully different from during a Follower
 				// period (from the perspective of the StateManager). The `electionJob`
@@ -142,6 +167,8 @@ func NewStateManager(
 				} else {
 					s.changeState(Follower)
 				}
+			case <-resetFlag:
+				s.BecomeFollower()
 			default:
 			}
 		}

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	db "github.com/btmorr/leifdb/internal/database"
+	"github.com/btmorr/leifdb/internal/mgmt"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/util"
 	"github.com/gin-gonic/gin"
@@ -34,7 +35,7 @@ func setupServer(t *testing.T) (*gin.Engine, *node.Node) {
 	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
 	n, _ := node.NewNode(config, store)
 	router := buildRouter(n)
-	n.DoElection()
+	n.State = mgmt.Leader
 	return router, n
 }
 

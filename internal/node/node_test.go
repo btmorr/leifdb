@@ -107,8 +107,6 @@ func TestPersistence(t *testing.T) {
 	store := db.NewDatabase()
 	n, _ := NewNode(config, store)
 
-	n.Halt()
-
 	if n.Term != 5 {
 		t.Error("Term not loaded correctly. Found term: ", n.Term)
 	}
@@ -334,7 +332,6 @@ func TestCommitLogs(t *testing.T) {
 				"Hermione": "present"}}}
 
 	n := setupNode(t)
-	n.Halt()
 	n.setTerm(currentTerm, currentLead)
 
 	for _, tc := range testCases {

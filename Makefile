@@ -22,7 +22,7 @@ install:
 app: clean
 	swag init
 	gofmt -w -s .
-	go fix
+	go fix ./...
 	go build -o $(binary_prefix)$(version)
 
 .PHONY: protobuf
