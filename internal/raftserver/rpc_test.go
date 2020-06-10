@@ -1,4 +1,4 @@
-// Unit tests on rpc functionality
+// +build unit
 
 package raftserver
 
@@ -70,7 +70,10 @@ func TestAppend(t *testing.T) {
 
 	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
 
-	termRecord := &raft.TermRecord{Term: 5, VotedFor: "localhost:8181"}
+	validLeaderId := "localhost:8181"
+	invalidLeaderId := "localhost:12345"
+
+	termRecord := &raft.TermRecord{Term: 5, VotedFor: validLeaderId}
 	node.WriteTerm(config.TermFile, termRecord)
 
 	starterLog := &raft.LogStore{
@@ -99,8 +102,6 @@ func TestAppend(t *testing.T) {
 		log.Fatalln("Failed to write log file:", err)
 	}
 
-	validLeaderId := "localhost:8181"
-	invalidLeaderId := "localhost:12345"
 	prevIdx := int64(len(starterLog.Entries) - 1)
 	prevTerm := starterLog.Entries[prevIdx].Term
 	newRecord := &raft.LogRecord{
@@ -279,7 +280,7 @@ func TestVote(t *testing.T) {
 		defer cancel()
 
 		reply, err := s.RequestVote(ctx, tc.request)
-    time.Sleep(time.Microsecond*300)
+		time.Sleep(time.Microsecond * 300)
 		fmt.Printf("[%s] Reply: %+v\n", tc.name, reply)
 		if err != nil {
 			t.Errorf("[%s] Unexpected error: %v", tc.name, err)

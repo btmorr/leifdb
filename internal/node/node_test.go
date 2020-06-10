@@ -1,7 +1,8 @@
+// +build unit
+
 package node
 
 import (
-	"context"
 	"log"
 	"os"
 	"testing"
@@ -10,24 +11,12 @@ import (
 	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/btmorr/leifdb/internal/testutil"
 	"github.com/btmorr/leifdb/internal/util"
-	"google.golang.org/grpc"
 )
 
 // checkForeignNodeMock is used to skip membership checks during test, so that a
 // Node will perform raft operations without creating a full multi-node config
 func checkForeignNodeMock(addr string, known map[string]*ForeignNode) bool {
 	return true
-}
-
-type MockRaftClient struct {
-	cc raft.RaftClient
-}
-
-func (m *MockRaftClient) RequestVote(ctx context.Context, in *raft.VoteRequest, opts ...grpc.CallOption) (*raft.VoteReply, error) {
-	return &raft.VoteReply{Term: in.Term, VoteGranted: true}, nil
-}
-func (m *MockRaftClient) AppendLogs(ctx context.Context, in *raft.AppendRequest, opts ...grpc.CallOption) (*raft.AppendReply, error) {
-	return &raft.AppendReply{Term: in.Term, Success: true}, nil
 }
 
 // setupNode configures a Database and a Node for test, and creates
@@ -342,5 +331,32 @@ func TestCommitLogs(t *testing.T) {
 				t.Errorf("[%s] Expected %s=%s got %s", tc.Name, k, tc.Expected[k], v)
 			}
 		}
+	}
+}
+
+func TestUpdateTermViaAppend(t *testing.T) {
+	n := setupNode(t)
+
+	startTerm := int64(3)
+	otherNodeId := "localhost:8181"
+	n.setTerm(startTerm, otherNodeId)
+
+	newTerm := startTerm + 1
+	req := &raft.AppendRequest{
+		Term:         newTerm,
+		LeaderId:     otherNodeId,
+		PrevLogIndex: -1,
+		PrevLogTerm:  -1,
+		Entries:      make([]*raft.LogRecord, 0, 0),
+		LeaderCommit: -1}
+	reply := n.HandleAppend(req)
+	if !reply.Success {
+		t.Error("Expected append success")
+	}
+	if n.Term != newTerm {
+		t.Errorf("Expected term %d but got %d", newTerm, n.Term)
+	}
+	if n.votedFor != otherNodeId {
+		t.Errorf("Expected voted for %s but got %s", otherNodeId, n.votedFor)
 	}
 }

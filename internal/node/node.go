@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -19,9 +18,17 @@ import (
 )
 
 var (
-	// ErrNotLeader indicates that a client attempted to make a write to a node
-	// that is not currently the leader of the cluster
-	ErrNotLeader = errors.New("Cannot accept writes if not leader")
+	// ErrNotLeaderRecv indicates that a client attempted to make a write to a
+	// node that is not currently the leader of the cluster
+	ErrNotLeaderRecv = errors.New("Cannot accept writes if not leader")
+
+	// ErrNotLeaderSend indicates that a server attempted to send an append
+	// request while it is not the leader of the cluster
+	ErrNotLeaderSend = errors.New("Cannot send log append request if not leader")
+
+	// ErrExpiredTerm indicates that an append request was generated for a past
+	// term, so it should not be sent
+	ErrExpiredTerm = errors.New("Do not send append requests for expired terms")
 
 	// ErrAppendFailed indicates that an append job ran out of retry attempts
 	// without successfully appending to a majorit of nodes
@@ -144,8 +151,8 @@ func (n *Node) setTerm(newTerm int64, votedFor string) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
 	vote := &raft.TermRecord{
-		Term:     n.Term,
-		VotedFor: n.votedFor}
+		Term:     newTerm,
+		VotedFor: votedFor}
 	return WriteTerm(n.config.TermFile, vote)
 }
 
@@ -179,6 +186,7 @@ func ReadLogs(filename string) *raft.LogStore {
 }
 
 func (n *Node) resetElectionTimer() {
+	n.State = mgmt.Follower
 	go func() {
 		n.Reset <- true
 	}()
@@ -209,7 +217,7 @@ func (n *Node) setLog(newLogs []*raft.LogRecord) (int64, error) {
 // in an election)
 func (n *Node) applyRecord(record *raft.LogRecord) error {
 	if n.State != mgmt.Leader {
-		return ErrNotLeader
+		return ErrNotLeaderRecv
 	}
 	newEntries := append(n.Log.Entries, record)
 	idx, err := n.setLog(newEntries)
@@ -218,7 +226,8 @@ func (n *Node) applyRecord(record *raft.LogRecord) error {
 		return err
 	}
 	// Try appending logs to other nodes, with 3 retries
-	err = n.SendAppend(3)
+	currentTerm := n.Term
+	err = n.SendAppend(3, currentTerm)
 	if err != nil {
 		log.Error().Err(err).Msg("applyRecord: Error shipping log")
 		return err
@@ -240,6 +249,10 @@ func (n *Node) applyRecord(record *raft.LogRecord) error {
 // Set appends a write entry to the log record, and returns once the update is
 // applied to the state machine or an error is generated
 func (n *Node) Set(key string, value string) error {
+	log.Info().
+		Str("key", key).
+		Str("value", value).
+		Msg("Set")
 	record := &raft.LogRecord{
 		Term:   n.Term,
 		Action: raft.LogRecord_SET,
@@ -251,6 +264,9 @@ func (n *Node) Set(key string, value string) error {
 // Delete appends a delete entry to the log record, and returns once the update
 // is applied to the state machine or an error is generated
 func (n *Node) Delete(key string) error {
+	log.Info().
+		Str("key", key).
+		Msg("Delete")
 	record := &raft.LogRecord{
 		Term:   n.Term,
 		Action: raft.LogRecord_DEL,
@@ -260,7 +276,7 @@ func (n *Node) Delete(key string) error {
 
 // requestVote sends a request for vote to a single other node (see `DoElection`)
 func (n *Node) requestVote(host string) (*raft.VoteReply, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*4)
 	defer cancel()
 
 	voteRequest := &raft.VoteRequest{
@@ -343,6 +359,7 @@ func (n *Node) DoElection() bool {
 			Bool("success", true).
 			Int64("term", n.Term).
 			Msg("Election succeeded")
+		n.State = mgmt.Leader
 		success = true
 
 		for k := range n.otherNodes {
@@ -413,8 +430,8 @@ func (n *Node) commitRecords() {
 
 // requestAppend sends append to one other node with new record(s) and updates
 // match index for that node if successful
-func (n *Node) requestAppend(host string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*5)
+func (n *Node) requestAppend(host string, term int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*12)
 	defer cancel()
 
 	prevLogIndex := n.otherNodes[host].MatchIndex
@@ -434,13 +451,27 @@ func (n *Node) requestAppend(host string) error {
 	}
 
 	req := &raft.AppendRequest{
-		Term:         n.Term,
+		Term:         term,
 		LeaderId:     n.NodeId,
 		PrevLogIndex: prevLogIndex,
 		PrevLogTerm:  prevLogTerm,
 		Entries:      newEntries,
 		LeaderCommit: n.commitIndex}
 
+	if n.State != mgmt.Leader {
+		// escape hatch in case this node stepped down in between the call to
+		// `SendAppend` and this point
+		log.Info().Msg("requestAppend not leader, returning")
+		return ErrNotLeaderSend
+	}
+	if term != n.Term {
+		log.Debug().
+			Int64("req term", term).
+			Int64("node term", n.Term).
+			Str("state", string(n.State)).
+			Msg("past escape hatch")
+		return ErrExpiredTerm
+	}
 	reply, err := n.otherNodes[host].Client.AppendLogs(ctx, req)
 	if err == nil {
 		if reply.Success {
@@ -449,7 +480,7 @@ func (n *Node) requestAppend(host string) error {
 		} else {
 			if prevLogIndex > 0 {
 				n.otherNodes[host].MatchIndex--
-				return n.requestAppend(host)
+				return n.requestAppend(host, term)
 			} else {
 				return ErrAppendRangeMet
 			}
@@ -465,10 +496,11 @@ func (n *Node) requestAppend(host string) error {
 
 // SendAppend sends out append-logs requests to each other node in the cluster,
 // and updates database state on majority success
-func (n *Node) SendAppend(retriesRemaining int) error {
+func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 	log.Trace().Msgf("SendAppend(r%d)", retriesRemaining)
 	if n.State != mgmt.Leader {
-		return ErrNotLeader
+		log.Debug().Msg("SendAppend but not leader, returning")
+		return ErrNotLeaderSend
 	}
 
 	numNodes := len(n.otherNodes)
@@ -485,9 +517,9 @@ func (n *Node) SendAppend(retriesRemaining int) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := n.requestAppend(k)
+			err := n.requestAppend(k, term)
 			if err != nil {
-				log.Warn().Err(err).Msgf("Error requesting append from %s", k)
+				log.Warn().Err(err).Msgf("Error requesting append from %s for term %d", k, term)
 			} else {
 				// is this threadsafe?
 				numAppended++
@@ -506,7 +538,7 @@ func (n *Node) SendAppend(retriesRemaining int) error {
 		log.Trace().Msg("minority")
 		// did not get a majority
 		if retriesRemaining > 0 {
-			return n.SendAppend(retriesRemaining - 1)
+			return n.SendAppend(retriesRemaining-1, term)
 		} else {
 			return ErrAppendFailed
 		}
@@ -550,12 +582,11 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		Msg("On load")
 
 	n := Node{
-		NodeId:   config.Id,
-		State:    mgmt.Follower,
-		Term:     termRecord.Term,
-		votedFor: termRecord.VotedFor,
-		Reset:    resetChannel,
-		// Halt:             haltChannel,
+		NodeId:           config.Id,
+		State:            mgmt.Follower,
+		Term:             termRecord.Term,
+		votedFor:         termRecord.VotedFor,
+		Reset:            resetChannel,
 		otherNodes:       make(map[string]*ForeignNode),
 		CheckForeignNode: checkForeignNode,
 		commitIndex:      -1,
@@ -615,12 +646,15 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 	if term < n.Term {
 		success = false
 	} else if term == n.Term && leaderId != n.votedFor {
-		termStr := strconv.FormatInt(n.Term, 10)
-		msg1 := "Append request from LeaderId mismatch for term " + termStr
-		msg2 := ". Got: " + leaderId + " (voted for: " + n.votedFor + "). "
-		msg3 := "Has the configuration changed?"
-		log.Error().Msg(msg1 + msg2 + msg3)
+		log.Error().
+			Int64("term", n.Term).
+			Str("got", leaderId).
+			Str("expected", n.votedFor).
+			Msgf("Append request leader mismatch")
 		success = false
+	}
+	if success {
+		n.resetElectionTimer()
 	}
 	return success
 }
@@ -722,13 +756,19 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 		success = true
 	}
 	if valid {
-		// reset the election timer on append from a valid leader (even if !matched)
-		n.resetElectionTimer()
-
 		// update term if necessary
 		if req.Term > n.Term {
+			log.Info().
+				Int64("newTerm", req.Term).
+				Str("votedFor", req.LeaderId).
+				Msg("Got more recent append, updating term record")
 			n.setTerm(req.Term, req.LeaderId)
 		}
+		// reset the election timer on append from a valid leader (even if !matched)
+		// --this duplicates the reset in `validateAppend`, in order to ensure that
+		// the time it takes to do all of the operations in this handler effectively
+		// happend "instantaneously" from the perspective of the election timeout
+		n.resetElectionTimer()
 	}
 	// finally
 	return &raft.AppendReply{Term: n.Term, Success: success}

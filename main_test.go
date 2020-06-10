@@ -1,4 +1,4 @@
-// Unit tests on non-rpc functionality
+// +build unit
 
 package main
 

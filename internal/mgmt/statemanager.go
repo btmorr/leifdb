@@ -37,10 +37,10 @@ func (l leaderState) stateType() Role {
 	return Leader
 }
 
-func newLeaderState(job func(), timeout time.Duration) *leaderState {
+func newLeaderState(job func(), interval time.Duration) *leaderState {
 	l := &leaderState{done: make(chan bool), job: job}
 	l.job()
-	t := time.NewTicker(timeout)
+	t := time.NewTicker(interval)
 	go func() {
 		for {
 			select {
@@ -48,6 +48,7 @@ func newLeaderState(job func(), timeout time.Duration) *leaderState {
 				return
 			case <-t.C:
 				l.job()
+			default:
 			}
 		}
 	}()
@@ -92,21 +93,19 @@ func newFollowerState(electionFlag chan bool, timeout time.Duration) *followerSt
 
 type StateManager struct {
 	state           state
-	updateHook      func(r Role)
 	electionFlag    chan bool
 	electionTimeout time.Duration
-	appendTimeout   time.Duration
+	appendInterval  time.Duration
 	appendJob       func()
 }
 
 func (s *StateManager) changeState(newState Role) {
 	s.state.stop()
 	if newState == Leader {
-		s.state = newLeaderState(s.appendJob, s.appendTimeout)
+		s.state = newLeaderState(s.appendJob, s.appendInterval)
 	} else {
 		s.state = newFollowerState(s.electionFlag, s.electionTimeout)
 	}
-	s.updateHook(newState)
 }
 
 // ResetTimer restarts the countdown on the election timer if the current state
@@ -129,25 +128,22 @@ func (s *StateManager) BecomeFollower() {
 // electionJob is a function that is called when the election timer expires,
 //     which should return a boolean designating whether the node should become
 //     a Leader (on true), or remain a Follower (on false)
-// appendTimeout is the period between append requests when a node is a Leader.
+// appendInterval is the period between append requests when a node is a Leader.
 //    The ticker ticks on this period, and calls appendJob
-// appendJob is the task that a Leader should perform after each appendTimeout
+// appendJob is the task that a Leader should perform after each appendInterval
 func NewStateManager(
 	resetFlag chan bool,
-	// haltFlag chan bool,
-	updateHook func(r Role),
 	electionTimeout time.Duration,
 	electionJob func() bool,
-	appendTimeout time.Duration,
+	appendInterval time.Duration,
 	appendJob func()) *StateManager {
 
 	c := make(chan bool)
 	s := &StateManager{
 		state:           newFollowerState(c, electionTimeout),
-		updateHook:      updateHook,
 		electionFlag:    c,
 		electionTimeout: electionTimeout,
-		appendTimeout:   appendTimeout,
+		appendInterval:  appendInterval,
 		appendJob:       appendJob}
 
 	go func() {

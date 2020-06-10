@@ -181,19 +181,21 @@ func main() {
 	// static interval for sending append requests
 	ms := (rand.Int() % lowerBound) + (upperBound - lowerBound)
 	electionTimeout := time.Duration(ms) * time.Millisecond
-	appendTimeout := time.Duration(10) * time.Millisecond
+	appendInterval := time.Duration(14) * time.Millisecond
 	log.Info().Msgf("Election timeout: %s", electionTimeout.String())
 
 	// Reference to StateManager is not kept--all coordination is done via
 	// either channels or callback hooks
 	mgmt.NewStateManager(
-		n.Reset, // Node -> StateManager: reset election timer
-		// n.Halt,                            // Node -> StateManager: stop (for tests)
-		func(r mgmt.Role) { n.State = r }, // StateManager -> Node: notify of new state
-		electionTimeout,                   // Time to wait for election when Follower
-		n.DoElection,                      // Call when election timer expires
-		appendTimeout,                     // Period for doing append job when Leader
-		func() { n.SendAppend(0) })        // Call when append ticker cycles
+		n.Reset,         // Node -> StateManager: reset election timer
+		electionTimeout, // Time to wait for election when Follower
+		n.DoElection,    // Call when election timer expires
+		appendInterval,  // Period for doing append job when Leader
+		func() {
+			if n.State == mgmt.Leader {
+				n.SendAppend(0, n.Term)
+			}
+		}) // Call when append ticker cycles
 
 	raftPortString := fmt.Sprintf(":%d", cfg.RaftPort)
 	clientPortString := fmt.Sprintf(":%d", cfg.ClientPort)
