@@ -6,7 +6,7 @@ import { DbPageProps, Mode } from '../../proptypes';
 const { TextArea } = Input;
 const { Option } = Select;
 
-export function DatabasePage(props: DbPageProps) {
+export default function DatabasePage(props: DbPageProps) {
   const [kv, setKV] = useState({key: "", value: ""});
   const [mode, setMode] = useState<Mode>("ModeSearch");
 

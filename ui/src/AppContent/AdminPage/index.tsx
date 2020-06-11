@@ -5,7 +5,7 @@ import { AdminPageProps, Server } from '../../proptypes';
 
 const { Search } = Input;
 
-export function AdminPage(props:AdminPageProps) {
+export default function AdminPage(props:AdminPageProps) {
 
   function tryConnect(address: string, handler: React.Dispatch<React.SetStateAction<Server>>) {
     const query = `http://${address}/health`

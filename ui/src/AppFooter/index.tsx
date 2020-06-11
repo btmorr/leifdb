@@ -3,7 +3,7 @@ import { Layout } from 'antd';
 
 const { Footer } = Layout;
 
-export function AppFooter() {
+export default function AppFooter() {
   const ghSheildImg = "https://img.shields.io/github/stars/btmorr/leifdb?style=social";
   const ghRepoLink = "https://github.com/btmorr/leifdb";
   const ghLinkAlt = "View LeifDb on GitHub";
