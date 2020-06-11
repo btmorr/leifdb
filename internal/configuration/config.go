@@ -16,14 +16,16 @@ import (
 )
 
 var (
-	// ErrInvalidMultiConfig indicates a configuration mode of "multi" but no other
-	// nodes included in the configuration
-	ErrInvalidMultiConfig = errors.New("Multi-node configuration must include more than one node")
+	// ErrInvalidMultiConfig indicates a configuration mode of "multi" but no
+	// other nodes included in the configuration
+	ErrInvalidMultiConfig = errors.New(
+		"Multi-node configuration must include more than one node")
 
-	// ErrSelfNotInConfig indicates a configuration that does not include this node--
-	// double-check the config file and make sure that one of the entries matches the
-	// preferred outbound IP address and chosen RaftPort for this server
-	ErrSelfNotInConfig = errors.New("This node must be included in the configration")
+	// ErrSelfNotInConfig indicates a configuration that does not include this
+	// node--double-check the config file and make sure that one entry matches
+	// the preferred outbound IP address and chosen RaftPort for this server
+	ErrSelfNotInConfig = errors.New(
+		"This node must be included in the configration")
 )
 
 // GetOutboundIP returns ip of preferred interface this machine
@@ -50,15 +52,15 @@ func init() {
 // ClusterMode is one of "single" or "multi" for describing distribution mode
 type ClusterMode string
 
-// Single is a configuration of one node, which only trivally involves Raft functions
-// Multi is a configuration of more than one nodes, requiring full Raft coordination
+// Single is a cluster of one node, which only trivally involves Raft functions
+// Multi is a cluster of more than one node, requiring full Raft coordination
 const (
 	SingleNode ClusterMode = "single"
 	MultiNode              = "multi"
 )
 
-// A ServerConfig contains the configuation values needed for other parts of the
-// server (see `BuildConfig`)
+// A ServerConfig contains the configuation values needed for other parts of
+// the server (see `BuildConfig`)
 type ServerConfig struct {
 	IpAddr     net.IP
 	DataDir    string
@@ -124,15 +126,19 @@ func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
 		NodeIds: otherNodes}
 }
 
-// BuildConfig performs all operations needed to parse configuration options, whether
-// commandline flags, config file parsing, or boot-time environment variable checks,
-// precompute other static configration values from those options, and perform tasks
-// that ensure that the configration is locally valid (such as checking that the IP
-// and RaftPort for this machine are included in the cluster configuration)
+// BuildConfig performs all operations needed to parse configuration options,
+// whether commandline flags, config file parsing, or boot-time environment
+// variable checks, precompute other static configration values from those
+// options, and perform tasks that ensure that the configration is locally
+// valid (such as checking that the IP and RaftPort for this machine are
+//  included in the cluster configuration)
 func BuildServerConfig() *ServerConfig {
-	dataDirP := flag.String("data", "", "Path to directory for data storage")
-	raftPortP := flag.Int("raftport", 16990, "Port number for Raft gRPC service interface")
-	clientPortP := flag.Int("httpport", 8080, "Port number for database HTTP service interface")
+	dataDirP := flag.String(
+		"data", "", "Path to directory for data storage")
+	raftPortP := flag.Int(
+		"raftport", 16990, "Port number for Raft gRPC service interface")
+	clientPortP := flag.Int(
+		"httpport", 8080, "Port number for database HTTP service interface")
 	flag.Parse()
 
 	dataDir := *dataDirP

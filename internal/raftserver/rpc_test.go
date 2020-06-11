@@ -19,14 +19,14 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
-// checkForeignNodeMock is used to skip membership checks during test, so that a
-// Node will respond to RPC calls without creating a full multi-node configuration
-func checkForeignNodeMock(addr string, known map[string]*node.ForeignNode) bool {
+// checkMock is used to skip membership checks during test, so that a Node will
+// respond to RPC calls without creating a full multi-node configuration
+func checkMock(addr string, known map[string]*node.ForeignNode) bool {
 	return true
 }
 
 // setupServer configurs a Database and a Node, mocks cluster membership check,
-// and creates a test directory that is automatically cleaned up after each test
+// and creates a test directory that is cleaned up after each test
 func setupServer(t *testing.T) *node.Node {
 	addr := "localhost:16990"
 
@@ -42,7 +42,7 @@ func setupServer(t *testing.T) *node.Node {
 
 	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
 	n, _ := node.NewNode(config, store)
-	n.CheckForeignNode = checkForeignNodeMock
+	n.CheckForeignNode = checkMock
 	return n
 }
 
@@ -307,11 +307,4 @@ func TestVote(t *testing.T) {
 				n.State)
 		}
 	}
-
-	// --- Part 3 ---
-	// Todo:
-	// After going back to Follower, check that node's election timer fires
-	// again, becoming candidate, then failing vote because the other 2
-	// known nodes do not respond (go into election cycling).
-
 }

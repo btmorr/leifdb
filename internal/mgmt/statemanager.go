@@ -81,9 +81,9 @@ func (f followerState) stateType() Role {
 	return Follower
 }
 
-func newFollowerState(electionFlag chan bool, timeout time.Duration) *followerState {
+func newFollowerState(signal chan bool, timeout time.Duration) *followerState {
 	t := time.NewTimer(timeout)
-	f := &followerState{timer: t, timeout: timeout, election: electionFlag}
+	f := &followerState{timer: t, timeout: timeout, election: signal}
 	go func() {
 		<-t.C
 		f.election <- true
@@ -91,6 +91,7 @@ func newFollowerState(electionFlag chan bool, timeout time.Duration) *followerSt
 	return f
 }
 
+// StateManager handles the aspects of the Raft protocol that require timing
 type StateManager struct {
 	state           state
 	electionFlag    chan bool
@@ -128,7 +129,7 @@ func (s *StateManager) BecomeFollower() {
 // electionJob is a function that is called when the election timer expires,
 //     which should return a boolean designating whether the node should become
 //     a Leader (on true), or remain a Follower (on false)
-// appendInterval is the period between append requests when a node is a Leader.
+// appendInterval is the period between append requests when a node is a Leader
 //    The ticker ticks on this period, and calls appendJob
 // appendJob is the task that a Leader should perform after each appendInterval
 func NewStateManager(

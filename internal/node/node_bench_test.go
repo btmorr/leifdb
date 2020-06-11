@@ -16,8 +16,8 @@ func init() {
 	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
 }
 
-// checkForeignNodeMock is used to skip membership checks during test, so that a
-// Node will perform raft operations without creating a full multi-node config
+// checkForeignNodeMock is used to skip membership checks during test, so that
+// a Node will perform raft operations without a full multi-node config
 func checkForeignNodeMock(addr string, known map[string]*ForeignNode) bool {
 	return true
 }

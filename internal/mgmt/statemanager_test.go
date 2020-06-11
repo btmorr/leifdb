@@ -1,9 +1,9 @@
 // +build xfail
 
-// This test is timing-dependent, and can be flaky on a given run. Until we have
-// a better way of testing the timer logic, this test is run separately on CI
-// such that a failure on this step doesn't count as a failed build (but will
-// still be visible in the logs)
+// This test is timing-dependent, and can be flaky on a given run. Until we
+// have a better way of testing the timer logic, this test is run separately on
+// CI such that a failure on this step doesn't count as a failed build (but
+// will still be visible in the logs)
 
 package mgmt
 
@@ -36,7 +36,8 @@ func TestManager(t *testing.T) {
 		})
 
 	if mgmt.state.stateType() != Follower {
-		t.Errorf("Expected state to be Follower but got %s\n", mgmt.state.stateType())
+		t.Errorf(
+			"Expected state to be Follower but got %s\n", mgmt.state.stateType())
 	}
 	time.Sleep(electionTimeout + time.Millisecond*2)
 	time.Sleep(appendInterval)
@@ -44,7 +45,9 @@ func TestManager(t *testing.T) {
 		t.Errorf("Expected %d elections, got %d\n", 1, electionCounter)
 	}
 	if mgmt.state.stateType() != Leader {
-		t.Errorf("Expected state to be Leader after election, but got %s\n", mgmt.state.stateType())
+		t.Errorf(
+			"Expected state to be Leader after election, but got %s\n",
+			mgmt.state.stateType())
 	}
 	// Is there a better way to test ticker behavior? I'd prefer not to have
 	// a time.Sleep in a test, but not sure how else to deal with this. Made
@@ -63,7 +66,8 @@ func TestManager(t *testing.T) {
 	}()
 	time.Sleep(time.Millisecond * 2)
 	if mgmt.state.stateType() != Follower {
-		t.Errorf("Expected state to be Follower, but got %s\n", mgmt.state.stateType())
+		t.Errorf(
+			"Expected state to be Follower, but got %s\n", mgmt.state.stateType())
 	}
 	time.Sleep(electionTimeout + time.Millisecond*2)
 	time.Sleep(appendInterval)
@@ -71,7 +75,9 @@ func TestManager(t *testing.T) {
 		t.Errorf("Expected %d elections, got %d\n", 2, electionCounter)
 	}
 	if mgmt.state.stateType() != Follower {
-		t.Errorf("Expected state to be Follower after failed election, but got %s\n", mgmt.state.stateType())
+		t.Errorf(
+			"Expected state to be Follower after failed election, but got %s\n",
+			mgmt.state.stateType())
 	}
 	time.Sleep(electionTimeout / time.Duration(2))
 	go func() {
@@ -89,7 +95,9 @@ func TestManager(t *testing.T) {
 		t.Errorf("Expected %d elections, got %d\n", 2, electionCounter)
 	}
 	if mgmt.state.stateType() != Follower {
-		t.Errorf("Expected state to still be Follower after resets, but got %s\n", mgmt.state.stateType())
+		t.Errorf(
+			"Expected state to still be Follower after resets, but got %s\n",
+			mgmt.state.stateType())
 	}
 	time.Sleep(electionTimeout + time.Millisecond*2)
 	time.Sleep(appendInterval)

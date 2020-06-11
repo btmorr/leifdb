@@ -29,6 +29,7 @@ install:
 app: clean
 	swag init
 	gofmt -w -s .
+	go vet
 	go fix ./...
 	go build -tags=unit,xfail -o $(binary_prefix)$(version)
 

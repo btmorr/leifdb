@@ -1,6 +1,3 @@
-// Practice implementation of the Raft distributed-consensus algorithm
-// See: https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf
-
 package main
 
 import (
