@@ -54,7 +54,10 @@ type ForeignNode struct {
 
 // NewForeignNode constructs a ForeignNode from an address ("host:port")
 func NewForeignNode(address string) (*ForeignNode, error) {
-	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithTimeout(time.Second))
+	conn, err := grpc.Dial(
+		address,
+		grpc.WithInsecure(),
+		grpc.WithTimeout(time.Second))
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to connect to %s", address)
 		return nil, err
@@ -91,8 +94,11 @@ type NodeConfig struct {
 type ForeignNodeChecker func(string, map[string]*ForeignNode) bool
 
 // A Node is one member of a Raft cluster, with all state needed to operate the
-// algorithm's state machine. At any one time, its role may be Leader, Candidate,
-// or Follower, and have different responsibilities depending on its role
+// algorithm's state machine. At any time, its role may be Leader, Candidate,
+// or Follower, and have different responsibilities depending on its role (note
+// that Candidate is a virtual role--a Candidate does not behave differently
+// from a Follower w.r.t. incoming messages, so the node will remain in the
+// Follower state while an election is in progress)
 type Node struct {
 	NodeId           string
 	State            mgmt.Role
@@ -267,7 +273,7 @@ func (n *Node) Delete(key string) error {
 	return n.applyRecord(record)
 }
 
-// requestVote sends a request for vote to a single other node (see `DoElection`)
+// requestVote sends a request for vote to a single other node (see DoElection)
 func (n *Node) requestVote(host string) (*raft.VoteReply, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*4)
 	defer cancel()
@@ -286,14 +292,14 @@ func (n *Node) requestVote(host string) (*raft.VoteReply, error) {
 	return vote, err
 }
 
-// DoElection sends out requests for votes to each other node in the Raft cluster.
-// When a Raft node's role is "candidate", it should send start an election. If it
-// is granted votes from a majority of nodes, its role changes to "leader". If it
-// receives an append-logs message during the election from a node with a term higher
-// than this node's current term, its role changes to "follower". If it does not
-// receive a majority of votes and also does not receive an append-logs from a valid
-// leader, it increments the term and starts another election (repeat until a leader
-// is elected).
+// DoElection sends out requests for votes to each other node in the Raft
+// cluster. When a Raft node's role is "candidate", it should send start an
+// election. If it is granted votes from a majority of nodes, its role changes
+// to "leader". If it receives an append-logs message during the election from
+// a node with a term higher than this node's current term, its role changes to
+// "follower". If it does not receive a majority of votes and also does not
+// receive an append-logs from a valid leader, it increments the term and
+// starts another election (repeat until a leader is elected).
 func (n *Node) DoElection() bool {
 	log.Trace().Msg("Starting Election")
 	n.setTerm(n.Term+1, n.NodeId)
@@ -512,7 +518,8 @@ func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 			defer wg.Done()
 			err := n.requestAppend(k, term)
 			if err != nil {
-				log.Debug().Err(err).Msgf("Error requesting append from %s for term %d", k, term)
+				log.Debug().Err(err).Msgf(
+					"Error requesting append from %s for term %d", k, term)
 			} else {
 				// is this threadsafe?
 				numAppended++
@@ -654,7 +661,8 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 
 // If an existing entry conflicts with a new one (same idx diff term),
 // reconcileLogs deletes the existing entry and any that follow
-func reconcileLogs(logStore *raft.LogStore, body *raft.AppendRequest) *raft.LogStore {
+func reconcileLogs(
+	logStore *raft.LogStore, body *raft.AppendRequest) *raft.LogStore {
 	// note: don't memoize length of Entries, it changes multiple times
 	// during this method--safer to recalculate, and memoizing would
 	// only save a maximum of one pass so it's not worth it
@@ -723,7 +731,9 @@ func (n *Node) checkPrevious(prevIndex int64, prevTerm int64) bool {
 	if prevIndex < 0 {
 		return true
 	}
-	return prevIndex < int64(len(n.Log.Entries)) && n.Log.Entries[prevIndex].Term == prevTerm
+	inRange := prevIndex < int64(len(n.Log.Entries))
+	matches := n.Log.Entries[prevIndex].Term == prevTerm
+	return inRange && matches
 }
 
 // HandleAppend responds to append-log messages from leader nodes
@@ -757,10 +767,11 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 				Msg("Got more recent append, updating term record")
 			n.setTerm(req.Term, req.LeaderId)
 		}
-		// reset the election timer on append from a valid leader (even if !matched)
-		// --this duplicates the reset in `validateAppend`, in order to ensure that
-		// the time it takes to do all of the operations in this handler effectively
-		// happend "instantaneously" from the perspective of the election timeout
+		// reset the election timer on append from a valid leader (even if
+		// not matched)--this duplicates the reset in `validateAppend`, in order to
+		// ensure that the time it takes to do all of the operations in this
+		// handler effectively happend "instantaneously" from the perspective of
+		// the election timeout
 		n.resetElectionTimer()
 	}
 	// finally

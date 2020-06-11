@@ -7,7 +7,8 @@ import (
 )
 
 // CompareLogs traverses a pair of LogStores to check for equality by value
-func CompareLogs(t *testing.T, testName string, got *raft.LogStore, expected *raft.LogStore) {
+func CompareLogs(
+	t *testing.T, testName string, got *raft.LogStore, expected *raft.LogStore) {
 	// Note: reflect.DeepEqual failed to return true for `LogRecord`s with
 	// identical contents, so have to do this instead... (DeepEqual probably
 	// can't reliably traverse objects with arrays of pointers to objects)
