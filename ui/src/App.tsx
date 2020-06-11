@@ -2,10 +2,9 @@ import React, { FunctionComponent, useState } from 'react';
 import { Layout } from 'antd';
 // import * as scp from 'scale-color-perceptual';
 
-import { AppHeader } from './AppHeader';
-import { AppContent } from './AppContent';
-import { AppFooter } from './AppFooter';
-
+import AppHeader from './AppHeader';
+import AppContent from './AppContent';
+import AppFooter from './AppFooter';
 import { Page } from './proptypes';
 
 import './App.css';

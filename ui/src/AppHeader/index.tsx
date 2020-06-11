@@ -6,7 +6,7 @@ import { HeaderProps } from '../proptypes';
 
 const { Header } = Layout;
 
-export function AppHeader(props:HeaderProps) {
+export default function AppHeader(props:HeaderProps) {
 
   return (
     <Header>

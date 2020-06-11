@@ -3,13 +3,13 @@ import React, { useState } from 'react';
 import { Layout, Breadcrumb } from 'antd';
 
 import { AppContentProps, Page } from '../proptypes';
-import { DatabasePage } from './DatabasePage';
-import { AdminPage } from './AdminPage';
-import { HomePage } from './HomePage';
+import DatabasePage from './DatabasePage';
+import AdminPage from './AdminPage';
+import HomePage from './HomePage';
 
 const { Content } = Layout;
 
-export function AppContent(props:AppContentProps) {
+export default function AppContent(props:AppContentProps) {
   const [host, setHost] = useState({address: "", healthy: false});
 
   const pages: Record<Page, JSX.Element> = {
