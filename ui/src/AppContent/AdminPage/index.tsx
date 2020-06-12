@@ -1,9 +1,14 @@
 import React from 'react';
 import { Input, Space, Card } from 'antd';
 import { CheckCircleFilled, WarningFilled } from '@ant-design/icons';
-import { AdminPageProps, Server } from '../../proptypes';
+import { Server } from '../../proptypes';
 
 const { Search } = Input;
+
+export interface AdminPageProps {
+  currentHost: Server;
+  setHost: React.Dispatch<React.SetStateAction<Server>>;
+}
 
 export default function AdminPage(props:AdminPageProps) {
 
