@@ -1,21 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 import { Layout, Breadcrumb } from 'antd';
 
-import { AppContentProps, Page } from '../proptypes';
+import { Page } from '../proptypes';
 import DatabasePage from './DatabasePage';
 import AdminPage from './AdminPage';
 import HomePage from './HomePage';
 
 const { Content } = Layout;
 
+export interface AppContentProps {
+  page: Page;
+}
+
 export default function AppContent(props:AppContentProps) {
   const [host, setHost] = useState({address: "", healthy: false});
+  const [schema, setSchema] = useState({});
+
+  useEffect(() => {
+    if (host && host.healthy) {
+      const query = `http://${host.address}/`
+      fetch(query)
+        .then(res => {
+          if (!res.ok) {
+            throw Error(res.statusText);
+          }
+          return res;
+        })
+        .then(res => res.json())
+        .then(d => setSchema(d))
+        .catch(() => console.log(`Failed to fetch scema from ${host.address}`));
+    }
+  }, [host])
+
+  useEffect(() => {
+    console.log("Schema:", JSON.stringify(schema, null, 2));
+  }, [schema])
 
   const pages: Record<Page, JSX.Element> = {
-    Home: <HomePage />,
+    Home: <HomePage
+      // schema={schema}
+    />,
     Database: <DatabasePage
-      host={host}/>,
+      host={host.address}
+      connected={host.healthy}/>,
     Admin: <AdminPage
       currentHost={host}
       setHost={setHost}/>

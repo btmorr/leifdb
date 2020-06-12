@@ -1,54 +1,78 @@
 import React, { useState } from 'react';
 import { Input, Button, Space, Alert, Select } from 'antd';
 import { SearchOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, CheckCircleFilled, WarningFilled } from '@ant-design/icons';
-import { DbPageProps, Mode } from '../../proptypes';
 
 const { TextArea } = Input;
 const { Option } = Select;
 
+export type Mode = 'ModeSearch' | 'ModeSet' | 'ModeDelete';
+
+export interface DbPageProps {
+  host: string;
+  connected: boolean;
+}
+
 export default function DatabasePage(props: DbPageProps) {
-  const [kv, setKV] = useState({key: "", value: ""});
+  const [kv, setKV] = useState({key: "", value: "", error: ""});
   const [mode, setMode] = useState<Mode>("ModeSearch");
 
   function connectHeader() {
-    if (props.host.address) {
+    if (props.host) {
       return (
-        <span>{props.host.healthy ? <span><CheckCircleFilled /> Connected to</span> : <span><WarningFilled /> Could not connect to</span>} <code>{props.host.address}</code></span>
+        <span>{props.connected ? <span><CheckCircleFilled /> Connected to</span> : <span><WarningFilled /> Could not connect to</span>} <code>{props.host}</code></span>
       )
     }
     return (
-      <Alert type="error" message="Not connected to a database server--use the Admin tab to connect" showIcon />
+      <Alert
+        type="error"
+        message="Not connected to a database--use the Admin tab to connect"
+        showIcon
+        closable />
     )
   }
 
+  function errorHeader() {
+    if (kv.error) {
+      return (
+        <Alert
+          type="error"
+          message={`Error communicating with server: ${kv.error}`}
+          showIcon
+          closable />
+      )
+    }
+  }
+
   function searchHandler(key: string) {
-    const query = `http://${props.host.address}/db/${key}`
+    const query = `http://${props.host}/db/${key}`
     console.log("GET " + query)
     fetch(query)
       .then(response => response.text())
       .then(data => {
         console.log("Result:", data);
-        setKV({key: kv.key, value: data});
-      });
+        setKV({key: kv.key, value: data, error: ""});
+      })
+      .catch(err => setKV({key: kv.key, value: "", error: err.message}));
   }
 
   function setHandler(key: string) {
-    const query = `http://${props.host.address}/db/${key}?value=${encodeURI(kv.value)}`
+    const query = `http://${props.host}/db/${key}?value=${encodeURI(kv.value)}`
     console.log("PUT " + query)
     fetch(query, {method: 'PUT'})
       .then(response => response.text())
       .then(data => {
         console.log("Result:", data);
-      });
+      })
+      .catch(err => setKV({key: kv.key, value: kv.value, error: err.message}));
   }
 
   function deleteHandler(key: string) {
-    const query = `http://${props.host.address}/db/${key}`
+    const query = `http://${props.host}/db/${key}`
     console.log("DELETE " + query)
-    // todo: improve error handling. if !res.ok show an alert and don't clear results
     fetch(query, {method: 'DELETE'})
       .then(res => { console.log("Ok?", res.ok); return res })
-      .then(() => setKV({key: kv.key, value: ""}))
+      .then(() => setKV({key: kv.key, value: "", error: ""}))
+      .catch(err => setKV({key: kv.key, value: "", error: err.message}));
   }
 
   const buttons = [
@@ -80,18 +104,29 @@ export default function DatabasePage(props: DbPageProps) {
   ];
 
   const resultElement: Record<Mode, JSX.Element> = {
-    ModeSearch: <TextArea className="App-result-field" id="result-textarea" value={kv.value} />,
-    ModeSet:    <TextArea className="App-result-field" id="result-textarea" onChange={e => {setKV({key: kv.key, value: e.target.value})}} allowClear />,
-    ModeDelete: <TextArea className="App-result-field" id="result-textarea" value={kv.value} />
+    ModeSearch: <TextArea
+      className="App-result-field"
+      id="result-textarea"
+      value={kv.value} />,
+    ModeSet:    <TextArea
+      className="App-result-field"
+      id="result-textarea"
+      onChange={e => {setKV({key: kv.key, value: e.target.value, error: ""})}}
+      allowClear />,
+    ModeDelete: <TextArea
+      className="App-result-field"
+      id="result-textarea"
+      value={kv.value} />
   }
 
   return (
     <Space direction="vertical">
       {connectHeader()}
+      {errorHeader()}
       <Input.Group compact>
         <Select
           defaultValue="ModeSearch"
-          onSelect={(val, opt) => setMode(val)}
+          onSelect={val => setMode(val)}
         >
           <Option value="ModeSearch"><SearchOutlined />Search</Option>
           <Option value="ModeSet"><SaveOutlined /> Set</Option>
@@ -113,7 +148,12 @@ export default function DatabasePage(props: DbPageProps) {
       </Input.Group>
       {resultElement[mode]}
       <div>
-        {buttons.map(d => { return <Button className="db-button" id={d.id} onClick={d.handler}>{d.icon} {d.text}</Button>})}
+        {buttons.map(d => {
+           return <Button
+            className="db-button"
+            id={d.id}
+            onClick={d.handler}>{d.icon} {d.text}
+          </Button>})}
       </div>
     </Space>
   )

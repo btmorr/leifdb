@@ -2,9 +2,14 @@ import React from 'react';
 import logo from '../logo.svg';
 import { Layout, Menu } from 'antd';
 
-import { HeaderProps } from '../proptypes';
+import { Page } from '../proptypes';
 
 const { Header } = Layout;
+
+export interface HeaderProps {
+  page: Page;
+  clickHandler: (p: Page) => void;
+}
 
 export default function AppHeader(props:HeaderProps) {
 
