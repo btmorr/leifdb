@@ -1,9 +1,13 @@
 import React from 'react';
 import { Input, Space, Card } from 'antd';
 import { CheckCircleFilled, WarningFilled } from '@ant-design/icons';
-import { Server } from '../../proptypes';
 
 const { Search } = Input;
+
+export interface Server {
+  address: string;
+  healthy: boolean;
+}
 
 export interface AdminPageProps {
   currentHost: Server;
