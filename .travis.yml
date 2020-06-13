@@ -3,11 +3,11 @@ language: go
 before_install:
   - nvm install --lts
   - make install
-  - pushd ui && yarn && popd
+  - make -C ui
 
 go:
   - 1.14.x
 
 script:
   - make
-  - pushd ui && yarn build && popd
+  - make -C ui build test

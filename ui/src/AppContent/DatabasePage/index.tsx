@@ -47,12 +47,15 @@ export default function DatabasePage(props: DbPageProps) {
     const query = `http://${props.host}/db/${key}`
     console.log("GET " + query)
     fetch(query)
-      .then(response => response.text())
+      .then(response => {
+        return response.text()
+      })
       .then(data => {
-        console.log("Result:", data);
         setKV({key: kv.key, value: data, error: ""});
       })
-      .catch(err => setKV({key: kv.key, value: "", error: err.message}));
+      .catch(err => {
+        setKV({key: kv.key, value: "", error: err.message});
+      })
   }
 
   function setHandler(key: string) {
@@ -105,17 +108,20 @@ export default function DatabasePage(props: DbPageProps) {
 
   const resultElement: Record<Mode, JSX.Element> = {
     ModeSearch: <TextArea
-      className="App-result-field"
+      className="App-search-field"
       id="result-textarea"
+      data-testid="result-textarea"
       value={kv.value} />,
     ModeSet:    <TextArea
-      className="App-result-field"
+      className="App-search-field"
       id="result-textarea"
+      data-testid="result-textarea"
       onChange={e => {setKV({key: kv.key, value: e.target.value, error: ""})}}
       allowClear />,
     ModeDelete: <TextArea
-      className="App-result-field"
+      className="App-search-field"
       id="result-textarea"
+      data-testid="result-textarea"
       value={kv.value} />
   }
 
@@ -123,17 +129,19 @@ export default function DatabasePage(props: DbPageProps) {
     <Space direction="vertical">
       {connectHeader()}
       {errorHeader()}
-      <Input.Group compact>
+      <Input.Group compact className="App-search-field">
         <Select
           defaultValue="ModeSearch"
+          data-testid="mode-dropdown"
           onSelect={val => setMode(val)}
         >
-          <Option value="ModeSearch"><SearchOutlined />Search</Option>
-          <Option value="ModeSet"><SaveOutlined /> Set</Option>
-          <Option value="ModeDelete"><DeleteOutlined />Delete</Option>
+          <Option value="ModeSearch" data-testid="mode-search" ><SearchOutlined />Search</Option>
+          <Option value="ModeSet" data-testid="mode-set" ><SaveOutlined /> Set</Option>
+          <Option value="ModeDelete" data-testid="mode-delete" ><DeleteOutlined />Delete</Option>
         </Select>
         <Input.Search
-          className="App-key-input"
+          className="App-search-field"
+          data-testid="App-key-input"
           placeholder="Search for a key here..."
           onSearch={key => {
             switch(mode) {
@@ -150,10 +158,13 @@ export default function DatabasePage(props: DbPageProps) {
       <div>
         {buttons.map(d => {
            return <Button
-            className="db-button"
-            id={d.id}
-            onClick={d.handler}>{d.icon} {d.text}
-          </Button>})}
+              className="db-button"
+              id={d.id}
+              key={d.id}
+              onClick={d.handler}
+            >
+              {d.icon} {d.text}
+            </Button>})}
       </div>
     </Space>
   )

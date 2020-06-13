@@ -46,9 +46,9 @@ export default function AdminPage(props:AdminPageProps) {
     <Space direction="vertical">
       Enter the address of a LeifDb server to connect to:
       <Search
+        className="App-search-field"
         placeholder="localhost:8080"
         onSearch={value => { tryConnect(value, props.setHost) }}
-        style={{ width: 300 }}
       />
       <span>
         Address should be in the form "<code>host:port</code>",
