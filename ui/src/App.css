@@ -19,6 +19,10 @@
   color: #61dafb;
 }
 
+.App-search-field {
+  width: 580px;
+}
+
 .site-card-border-less-wrapper {
   padding: 30px;
   background: #ececec;
