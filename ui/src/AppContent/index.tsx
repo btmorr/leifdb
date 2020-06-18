@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 import { Layout, Breadcrumb } from 'antd';
 
-import { Page } from '../proptypes';
+import { Page, Server } from '../proptypes';
 import DatabasePage from './DatabasePage';
 import AdminPage from './AdminPage';
 import HomePage from './HomePage';
@@ -14,36 +14,17 @@ export interface AppContentProps {
 }
 
 export default function AppContent(props:AppContentProps) {
-  const [host, setHost] = useState({address: "", healthy: false});
-  const [schema, setSchema] = useState({});
-
-  useEffect(() => {
-    if (host && host.healthy) {
-      const query = `http://${host.address}/`
-      fetch(query)
-        .then(res => {
-          if (!res.ok) {
-            throw Error(res.statusText);
-          }
-          return res;
-        })
-        .then(res => res.json())
-        .then(d => setSchema(d))
-        .catch(() => console.log(`Failed to fetch scema from ${host.address}`));
-    }
-  }, [host])
-
-  useEffect(() => {
-    console.log("Schema:", JSON.stringify(schema, null, 2));
-  }, [schema])
+  const [host, setHost] = useState<Server>({
+    address: "",
+    healthy: false
+  });
 
   const pages: Record<Page, JSX.Element> = {
     Home: <HomePage
       // schema={schema}
     />,
     Database: <DatabasePage
-      host={host.address}
-      connected={host.healthy}/>,
+      host={host}/>,
     Admin: <AdminPage
       currentHost={host}
       setHost={setHost}/>

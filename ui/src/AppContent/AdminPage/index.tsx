@@ -1,13 +1,10 @@
 import React from 'react';
 import { Input, Space, Card } from 'antd';
 import { CheckCircleFilled, WarningFilled } from '@ant-design/icons';
+import * as Client from '../../leifDbClientAPI';
+import { Server } from '../../proptypes';
 
 const { Search } = Input;
-
-export interface Server {
-  address: string;
-  healthy: boolean;
-}
 
 export interface AdminPageProps {
   currentHost: Server;
@@ -25,8 +22,14 @@ export default function AdminPage(props:AdminPageProps) {
         }
         return res;
       })
-      .then(res => handler({address: address, healthy: res.ok}))
-      .catch(() => handler({address: address, healthy: false}));
+      .then(res => handler({
+        address: address,
+        healthy: res.ok,
+        client: new Client.LeifDbClientAPI({baseUri: address})
+      }))
+      .catch(() => handler({
+        address: address,
+        healthy: false}));
   }
 
   function buildCard() {

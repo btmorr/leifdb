@@ -35,7 +35,7 @@ paths:
           description: Temporary Redirect
           headers:
             Location:
-              description: localhost:8181
+              description: Redirect address of current leader
               type: string
           schema:
             type: string
@@ -83,7 +83,7 @@ paths:
           description: Temporary Redirect
           headers:
             Location:
-              description: localhost:8181
+              description: Redirect address of the current leader
               type: string
           schema:
             type: string

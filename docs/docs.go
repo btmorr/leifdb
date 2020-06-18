@@ -95,7 +95,7 @@ var doc = `{
                         "headers": {
                             "Location": {
                                 "type": "string",
-                                "description": "localhost:8181"
+                                "description": "Redirect address of the current leader"
                             }
                         }
                     }
@@ -134,7 +134,7 @@ var doc = `{
                         "headers": {
                             "Location": {
                                 "type": "string",
-                                "description": "localhost:8181"
+                                "description": "Redirect address of current leader"
                             }
                         }
                     }

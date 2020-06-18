@@ -78,7 +78,7 @@
                         "headers": {
                             "Location": {
                                 "type": "string",
-                                "description": "localhost:8181"
+                                "description": "Redirect address of the current leader"
                             }
                         }
                     }
@@ -117,7 +117,7 @@
                         "headers": {
                             "Location": {
                                 "type": "string",
-                                "description": "localhost:8181"
+                                "description": "Redirect address of current leader"
                             }
                         }
                     }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Input, Button, Space, Alert, Select } from 'antd';
 import { SearchOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, CheckCircleFilled, WarningFilled } from '@ant-design/icons';
+import { Server } from '../../proptypes';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -8,8 +9,7 @@ const { Option } = Select;
 export type Mode = 'ModeSearch' | 'ModeSet' | 'ModeDelete';
 
 export interface DbPageProps {
-  host: string;
-  connected: boolean;
+  host: Server;
 }
 
 export default function DatabasePage(props: DbPageProps) {
@@ -17,9 +17,9 @@ export default function DatabasePage(props: DbPageProps) {
   const [mode, setMode] = useState<Mode>("ModeSearch");
 
   function connectHeader() {
-    if (props.host) {
+    if (props.host.address) {
       return (
-        <span>{props.connected ? <span><CheckCircleFilled /> Connected to</span> : <span><WarningFilled /> Could not connect to</span>} <code>{props.host}</code></span>
+        <span>{props.host.healthy ? <span><CheckCircleFilled /> Connected to</span> : <span><WarningFilled /> Could not connect to</span>} <code>{props.host.address}</code></span>
       )
     }
     return (
@@ -44,7 +44,7 @@ export default function DatabasePage(props: DbPageProps) {
   }
 
   function searchHandler(key: string) {
-    const query = `http://${props.host}/db/${key}`
+    const query = `http://${props.host.address}/db/${key}`
     console.log("GET " + query)
     fetch(query)
       .then(response => {
@@ -59,7 +59,7 @@ export default function DatabasePage(props: DbPageProps) {
   }
 
   function setHandler(key: string) {
-    const query = `http://${props.host}/db/${key}?value=${encodeURI(kv.value)}`
+    const query = `http://${props.host.address}/db/${key}?value=${encodeURI(kv.value)}`
     console.log("PUT " + query)
     fetch(query, {method: 'PUT'})
       .then(response => response.text())
@@ -70,7 +70,7 @@ export default function DatabasePage(props: DbPageProps) {
   }
 
   function deleteHandler(key: string) {
-    const query = `http://${props.host}/db/${key}`
+    const query = `http://${props.host.address}/db/${key}`
     console.log("DELETE " + query)
     fetch(query, {method: 'DELETE'})
       .then(res => { console.log("Ok?", res.ok); return res })

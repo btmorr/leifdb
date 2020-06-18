@@ -86,7 +86,7 @@ func (ctl *Controller) handleRead(c *gin.Context) {
 // @Param value query string false "Value"
 // @Success 200 {string} string "Ok"
 // @Failure 307 {string} string "Temporary Redirect"
-// @Header 307 {string} Location "localhost:8181"
+// @Header 307 {string} Location "Redirect address of the current leader"
 // @Router /db/{key} [put]
 func (ctl *Controller) handleWrite(c *gin.Context) {
 	// todo: add redirect if not leader, use "Location:" header
@@ -110,7 +110,7 @@ func (ctl *Controller) handleWrite(c *gin.Context) {
 // @Param key path string true "Key"
 // @Success 200 {string} string "Ok"
 // @Failure 307 {string} string "Temporary Redirect"
-// @Header 307 {string} Location "localhost:8181"
+// @Header 307 {string} Location "Redirect address of current leader"
 // @Router /db/{key} [delete]
 func (ctl *Controller) handleDelete(c *gin.Context) {
 	// todo: add redirect if not leader, use "Location:" header
