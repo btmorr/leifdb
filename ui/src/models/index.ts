@@ -1,9 +1,16 @@
 /*
- * eslint-disable
+ * MIT
  */
 
 import { ServiceClientOptions } from "@azure/ms-rest-js";
 import * as msRest from "@azure/ms-rest-js";
+
+/**
+ * An interface representing MainDeleteResponse.
+ */
+export interface MainDeleteResponse {
+  status?: string;
+}
 
 /**
  * An interface representing MainHealthResponse.
@@ -13,20 +20,31 @@ export interface MainHealthResponse {
 }
 
 /**
+ * An interface representing MainReadResponse.
+ */
+export interface MainReadResponse {
+  value?: string;
+}
+
+/**
+ * An interface representing MainWriteRequest.
+ */
+export interface MainWriteRequest {
+  value?: string;
+}
+
+/**
+ * An interface representing MainWriteResponse.
+ */
+export interface MainWriteResponse {
+  status?: string;
+}
+
+/**
  * An interface representing LeifDbClientAPIOptions.
  */
 export interface LeifDbClientAPIOptions extends ServiceClientOptions {
   baseUri?: string;
-}
-
-/**
- * Optional Parameters.
- */
-export interface LeifDbClientAPIDbWriteOptionalParams extends msRest.RequestOptionsBase {
-  /**
-   * Value
-   */
-  value?: string;
 }
 
 /**
@@ -52,12 +70,7 @@ export interface DbDeleteHeaders {
 /**
  * Contains response data for the dbRead operation.
  */
-export type DbReadResponse = {
-  /**
-   * The parsed response body.
-   */
-  body: string;
-
+export type DbReadResponse = MainReadResponse & {
   /**
    * The underlying HTTP response.
    */
@@ -70,7 +83,7 @@ export type DbReadResponse = {
       /**
        * The response body as parsed JSON or XML
        */
-      parsedBody: string;
+      parsedBody: MainReadResponse;
     };
 };
 
@@ -81,7 +94,7 @@ export type DbWriteResponse = DbWriteHeaders & {
   /**
    * The parsed response body.
    */
-  body: string;
+  body: any;
 
   /**
    * The underlying HTTP response.
@@ -100,7 +113,7 @@ export type DbWriteResponse = DbWriteHeaders & {
       /**
        * The response body as parsed JSON or XML
        */
-      parsedBody: string;
+      parsedBody: any;
     };
 };
 
@@ -111,7 +124,7 @@ export type DbDeleteResponse = DbDeleteHeaders & {
   /**
    * The parsed response body.
    */
-  body: string;
+  body: any;
 
   /**
    * The underlying HTTP response.
@@ -130,7 +143,7 @@ export type DbDeleteResponse = DbDeleteHeaders & {
       /**
        * The response body as parsed JSON or XML
        */
-      parsedBody: string;
+      parsedBody: any;
     };
 };
 

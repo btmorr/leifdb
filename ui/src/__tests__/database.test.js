@@ -4,17 +4,18 @@ import { setupServer } from "msw/node";
 import { render, fireEvent, screen, waitFor } from "@testing-library/react";
 import { act } from "react-dom/test-utils";
 import DatabasePage from "../AppContent/DatabasePage";
+import * as Client from '../leifDbClientAPI';
 
 const keyText = "test.key";
 const resultText = "Testy";
 const server = setupServer(
   rest.get(`*/db/${keyText}`, (req, res, ctx) => {
     // console.log("beep");
-    return res(ctx.text(resultText));
+    return res(ctx.json({"value": resultText}));
   }),
-  rest.put(`*/db/${keyText}?value=${resultText}`, (req, res, ctx) => {
+  rest.put(`*/db/${keyText}`, (req, res, ctx) => {
     // console.log("boop");
-    return res(ctx.text("Ok"));
+    return res(ctx.json({"status": "Ok"}));
   })
 );
 
@@ -24,12 +25,19 @@ afterAll(() => server.close());
 
 test("displays results after fetch when connected to a server", async () => {
 
-  let host = "localhost:1234";
+  let host = {
+    address: "localhost:1234",
+    healthy: true,
+    client: new Client.LeifDbClientAPI({baseUri: "http://localhost:1234"})
+  };
   let connected = true;
 
   const { getByText } = render(<DatabasePage host={host} connected={connected} />);
 
-  fireEvent.change(screen.getByTestId("App-key-input"), {target: {value: keyText}});
+  act(() => {
+    fireEvent.change(
+      screen.getByTestId("App-key-input"), {target: {value: keyText}});
+  })
 
   const keyfield = screen.getByTestId("App-key-input");
   expect(keyfield.value).toBe(keyText);
@@ -46,7 +54,7 @@ test("displays results after fetch when connected to a server", async () => {
     // There has **got** to be a better way to check the DOM after re-render...
     // But if I don't do this then any other means I've found returns early
     // and the component isn't updated.
-    await sleep(5);
+    await sleep(10);
   });
 
   const resultField = getByText(resultText);

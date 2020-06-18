@@ -1,12 +1,12 @@
 /*
- * eslint-disable
+ * MIT
  */
 
 import * as msRest from "@azure/ms-rest-js";
 import * as Models from "./models";
 
 const packageName = "leifdb";
-const packageVersion = "0.1.0-beta.2";
+const packageVersion = "0.1.0-beta.2+use-autorest.dc53421";
 
 export class LeifDbClientAPIContext extends msRest.ServiceClient {
 

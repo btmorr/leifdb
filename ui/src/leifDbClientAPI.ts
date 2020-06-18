@@ -1,5 +1,5 @@
 /*
- * eslint-disable
+ * MIT
  */
 
 import * as msRest from "@azure/ms-rest-js";
@@ -28,14 +28,14 @@ class LeifDbClientAPI extends LeifDbClientAPIContext {
    * @param key Key
    * @param callback The callback
    */
-  dbRead(key: string, callback: msRest.ServiceCallback<string>): void;
+  dbRead(key: string, callback: msRest.ServiceCallback<Models.MainReadResponse>): void;
   /**
    * @param key Key
    * @param options The optional parameters
    * @param callback The callback
    */
-  dbRead(key: string, options: msRest.RequestOptionsBase, callback: msRest.ServiceCallback<string>): void;
-  dbRead(key: string, options?: msRest.RequestOptionsBase | msRest.ServiceCallback<string>, callback?: msRest.ServiceCallback<string>): Promise<Models.DbReadResponse> {
+  dbRead(key: string, options: msRest.RequestOptionsBase, callback: msRest.ServiceCallback<Models.MainReadResponse>): void;
+  dbRead(key: string, options?: msRest.RequestOptionsBase | msRest.ServiceCallback<Models.MainReadResponse>, callback?: msRest.ServiceCallback<Models.MainReadResponse>): Promise<Models.DbReadResponse> {
     return this.sendOperationRequest(
       {
         key,
@@ -48,25 +48,29 @@ class LeifDbClientAPI extends LeifDbClientAPIContext {
   /**
    * @summary Write value to database by key
    * @param key Key
+   * @param body Value
    * @param [options] The optional parameters
    * @returns Promise<Models.DbWriteResponse>
    */
-  dbWrite(key: string, options?: Models.LeifDbClientAPIDbWriteOptionalParams): Promise<Models.DbWriteResponse>;
+  dbWrite(key: string, body: Models.MainWriteRequest, options?: msRest.RequestOptionsBase): Promise<Models.DbWriteResponse>;
   /**
    * @param key Key
+   * @param body Value
    * @param callback The callback
    */
-  dbWrite(key: string, callback: msRest.ServiceCallback<string>): void;
+  dbWrite(key: string, body: Models.MainWriteRequest, callback: msRest.ServiceCallback<any>): void;
   /**
    * @param key Key
+   * @param body Value
    * @param options The optional parameters
    * @param callback The callback
    */
-  dbWrite(key: string, options: Models.LeifDbClientAPIDbWriteOptionalParams, callback: msRest.ServiceCallback<string>): void;
-  dbWrite(key: string, options?: Models.LeifDbClientAPIDbWriteOptionalParams | msRest.ServiceCallback<string>, callback?: msRest.ServiceCallback<string>): Promise<Models.DbWriteResponse> {
+  dbWrite(key: string, body: Models.MainWriteRequest, options: msRest.RequestOptionsBase, callback: msRest.ServiceCallback<any>): void;
+  dbWrite(key: string, body: Models.MainWriteRequest, options?: msRest.RequestOptionsBase | msRest.ServiceCallback<any>, callback?: msRest.ServiceCallback<any>): Promise<Models.DbWriteResponse> {
     return this.sendOperationRequest(
       {
         key,
+        body,
         options
       },
       dbWriteOperationSpec,
@@ -84,14 +88,14 @@ class LeifDbClientAPI extends LeifDbClientAPIContext {
    * @param key Key
    * @param callback The callback
    */
-  dbDelete(key: string, callback: msRest.ServiceCallback<string>): void;
+  dbDelete(key: string, callback: msRest.ServiceCallback<any>): void;
   /**
    * @param key Key
    * @param options The optional parameters
    * @param callback The callback
    */
-  dbDelete(key: string, options: msRest.RequestOptionsBase, callback: msRest.ServiceCallback<string>): void;
-  dbDelete(key: string, options?: msRest.RequestOptionsBase | msRest.ServiceCallback<string>, callback?: msRest.ServiceCallback<string>): Promise<Models.DbDeleteResponse> {
+  dbDelete(key: string, options: msRest.RequestOptionsBase, callback: msRest.ServiceCallback<any>): void;
+  dbDelete(key: string, options?: msRest.RequestOptionsBase | msRest.ServiceCallback<any>, callback?: msRest.ServiceCallback<any>): Promise<Models.DbDeleteResponse> {
     return this.sendOperationRequest(
       {
         key,
@@ -136,12 +140,7 @@ const dbReadOperationSpec: msRest.OperationSpec = {
   ],
   responses: {
     200: {
-      bodyMapper: {
-        serializedName: "parsedResponse",
-        type: {
-          name: "String"
-        }
-      }
+      bodyMapper: Mappers.MainReadResponse
     },
     default: {}
   },
@@ -154,11 +153,19 @@ const dbWriteOperationSpec: msRest.OperationSpec = {
   urlParameters: [
     Parameters.key
   ],
-  queryParameters: [
-    Parameters.value
-  ],
+  requestBody: {
+    parameterPath: "body",
+    mapper: {
+      ...Mappers.MainWriteRequest,
+      required: true
+    }
+  },
   responses: {
     200: {
+      bodyMapper: Mappers.MainWriteResponse,
+      headersMapper: Mappers.DbWriteHeaders
+    },
+    307: {
       bodyMapper: {
         serializedName: "parsedResponse",
         type: {
@@ -167,7 +174,7 @@ const dbWriteOperationSpec: msRest.OperationSpec = {
       },
       headersMapper: Mappers.DbWriteHeaders
     },
-    307: {
+    400: {
       bodyMapper: {
         serializedName: "parsedResponse",
         type: {
@@ -189,12 +196,7 @@ const dbDeleteOperationSpec: msRest.OperationSpec = {
   ],
   responses: {
     200: {
-      bodyMapper: {
-        serializedName: "parsedResponse",
-        type: {
-          name: "String"
-        }
-      },
+      bodyMapper: Mappers.MainDeleteResponse,
       headersMapper: Mappers.DbDeleteHeaders
     },
     307: {

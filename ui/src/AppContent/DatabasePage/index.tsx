@@ -44,17 +44,16 @@ export default function DatabasePage(props: DbPageProps) {
   }
 
   function searchHandler(key: string) {
-    // const query = `http://${props.host.address}/db/${key}`
-    // console.log("GET " + query)
-    // fetch(query)
     if (props.host.client) {
       props.host.client.dbRead(key)
         .then(response => {
-          console.log("Response:", response);
-          return response.body;
+          if (response.value) {
+            return response.value;
+          } else {
+            return "";
+          }
         })
         .then(data => {
-          console.log("Got:", data);
           setKV({key: kv.key, value: data, error: ""});
         })
         .catch(err => {
@@ -65,20 +64,14 @@ export default function DatabasePage(props: DbPageProps) {
   }
 
   function setHandler(key: string) {
-    // const query = `http://${props.host.address}/db/${key}?value=${encodeURI(kv.value)}`
-    // console.log("PUT " + query)
-    // fetch(query, {method: 'PUT'})
     if (props.host.client) {
-      props.host.client.dbWrite(key)
+      props.host.client.dbWrite(key, {value: kv.value})
         .then(res => { console.log("Wrote:", res.body); return res })
         .catch(err => setKV({key: kv.key, value: kv.value, error: err.message}));
     }
   }
 
   function deleteHandler(key: string) {
-    // const query = `http://${props.host.address}/db/${key}`
-    // console.log("DELETE " + query)
-    // fetch(query, {method: 'DELETE'})
     if (props.host.client) {
       props.host.client.dbDelete(key)
         .then(res => { console.log("Delete ok?", res.body); return res })
