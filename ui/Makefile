@@ -14,4 +14,4 @@ test:
 
 .PHONY: autorest
 autorest:
-	npx autorest --typescript --input-file=../docs/swagger.json --output-folder=. --license-header=eslint-disable --package-name=leifdb --package-version=$(version)
+	npx autorest --typescript --input-file=../docs/swagger.json --output-folder=. --license-header=MIT --package-name=leifdb --package-version=$(version)

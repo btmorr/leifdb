@@ -44,38 +44,47 @@ export default function DatabasePage(props: DbPageProps) {
   }
 
   function searchHandler(key: string) {
-    const query = `http://${props.host.address}/db/${key}`
-    console.log("GET " + query)
-    fetch(query)
-      .then(response => {
-        return response.text()
-      })
-      .then(data => {
-        setKV({key: kv.key, value: data, error: ""});
-      })
-      .catch(err => {
-        setKV({key: kv.key, value: "", error: err.message});
-      })
+    // const query = `http://${props.host.address}/db/${key}`
+    // console.log("GET " + query)
+    // fetch(query)
+    if (props.host.client) {
+      props.host.client.dbRead(key)
+        .then(response => {
+          console.log("Response:", response);
+          return response.body;
+        })
+        .then(data => {
+          console.log("Got:", data);
+          setKV({key: kv.key, value: data, error: ""});
+        })
+        .catch(err => {
+          console.log("Error:", err.message);
+          setKV({key: kv.key, value: "", error: err.message});
+        })
+    }
   }
 
   function setHandler(key: string) {
-    const query = `http://${props.host.address}/db/${key}?value=${encodeURI(kv.value)}`
-    console.log("PUT " + query)
-    fetch(query, {method: 'PUT'})
-      .then(response => response.text())
-      .then(data => {
-        console.log("Result:", data);
-      })
-      .catch(err => setKV({key: kv.key, value: kv.value, error: err.message}));
+    // const query = `http://${props.host.address}/db/${key}?value=${encodeURI(kv.value)}`
+    // console.log("PUT " + query)
+    // fetch(query, {method: 'PUT'})
+    if (props.host.client) {
+      props.host.client.dbWrite(key)
+        .then(res => { console.log("Wrote:", res.body); return res })
+        .catch(err => setKV({key: kv.key, value: kv.value, error: err.message}));
+    }
   }
 
   function deleteHandler(key: string) {
-    const query = `http://${props.host.address}/db/${key}`
-    console.log("DELETE " + query)
-    fetch(query, {method: 'DELETE'})
-      .then(res => { console.log("Ok?", res.ok); return res })
-      .then(() => setKV({key: kv.key, value: "", error: ""}))
-      .catch(err => setKV({key: kv.key, value: "", error: err.message}));
+    // const query = `http://${props.host.address}/db/${key}`
+    // console.log("DELETE " + query)
+    // fetch(query, {method: 'DELETE'})
+    if (props.host.client) {
+      props.host.client.dbDelete(key)
+        .then(res => { console.log("Delete ok?", res.body); return res })
+        .then(() => setKV({key: kv.key, value: "", error: ""}))
+        .catch(err => setKV({key: kv.key, value: "", error: err.message}));
+    }
   }
 
   const buttons = [

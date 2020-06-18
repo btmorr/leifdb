@@ -3,6 +3,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -57,9 +59,12 @@ func TestReadAfterWrite(t *testing.T) {
 	router, _ := setupServer(t)
 
 	v := "testy"
+	body1 := WriteRequest{Value: v}
+	b1, _ := json.Marshal(body1)
+	br1 := bytes.NewReader(b1)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("PUT", "/db/stuff?value="+v, nil)
+	req, _ := http.NewRequest("PUT", "/db/stuff", br1)
 	router.ServeHTTP(w, req)
 
 	fmt.Printf("Response: %+v\n", w)
@@ -77,8 +82,12 @@ func TestReadAfterWrite(t *testing.T) {
 	}
 
 	raw, _ := ioutil.ReadAll(w2.Body)
-	if string(raw) != v {
-		t.Error("Incorrect response:", string(raw))
+	var data ReadResponse
+	if err := json.Unmarshal(raw, &data); err != nil {
+		t.Error(err.Error())
+	}
+	if data.Value != v {
+		t.Errorf("Incorrect response: %+v", data)
 	}
 }
 
@@ -87,11 +96,14 @@ func TestDelete(t *testing.T) {
 	router, _ := setupServer(t)
 
 	v := "testy"
+	body1 := WriteRequest{Value: v}
+	b1, _ := json.Marshal(body1)
+	br1 := bytes.NewReader(b1)
 
 	uri := "/db/stuff"
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("PUT", uri+"?value="+v, nil)
+	req, _ := http.NewRequest("PUT", uri, br1)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -107,8 +119,12 @@ func TestDelete(t *testing.T) {
 	}
 
 	raw, _ := ioutil.ReadAll(w2.Body)
-	if string(raw) != v {
-		t.Error("Incorrect response:", string(raw))
+	var data ReadResponse
+	if err := json.Unmarshal(raw, &data); err != nil {
+		t.Error(err.Error())
+	}
+	if data.Value != v {
+		t.Errorf("Incorrect response: %+v", data)
 	}
 
 	w3 := httptest.NewRecorder()
@@ -127,8 +143,12 @@ func TestDelete(t *testing.T) {
 		t.Error("Non-200 health status in GET (for key not found):", w4.Code)
 	}
 
-	raw2, _ := ioutil.ReadAll(w2.Body)
-	if string(raw2) != "" {
-		t.Error("Incorrect response:", string(raw))
+	raw4, _ := ioutil.ReadAll(w4.Body)
+	var data4 ReadResponse
+	if err := json.Unmarshal(raw4, &data4); err != nil {
+		t.Errorf("%s while processing %s", err.Error(), string(raw4))
+	}
+	if data4.Value != "" {
+		t.Errorf("Incorrect response: %+v", data4)
 	}
 }

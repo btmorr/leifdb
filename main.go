@@ -28,14 +28,6 @@ import (
 // @license.name MIT
 // @license.url https://github.com/btmorr/leifdb/blob/edge/LICENSE
 
-// Data types for [un]marshalling JSON
-
-// A HealthResponse is a response body template for the health route [note: the
-//health endpoint takes a GET request, so there is no corresponding Body type]
-type HealthResponse struct {
-	Status string `json:"status"`
-}
-
 // Controller wraps routes for HTTP interface
 type Controller struct {
 	Node *node.Node
@@ -44,6 +36,12 @@ type Controller struct {
 // NewController returns a Controller
 func NewController(n *node.Node) *Controller {
 	return &Controller{Node: n}
+}
+
+// HealthResponse is a response body template for the health route [note: this
+// endpoint takes a GET request, so there is no corresponding Request type]
+type HealthResponse struct {
+	Status string `json:"status"`
 }
 
 // Handler for the health endpoint--not required for Raft, but useful for
@@ -61,54 +59,77 @@ func (ctl *Controller) handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, HealthResponse{Status: "Ok"})
 }
 
-// Handler for database reads (GET /db/:key)
+// ReadResponse is a response body template for the data read route [note: this
+// endpoint takes a GET request, so there is no corresponding Request type]
+type ReadResponse struct {
+	Value string `json:"value"`
+}
+
+// Handler for database reads
 // @Summary Return value from database by key
 // @ID db-read
 // @Accept */*
-// @Produce text/plain
+// @Produce application/json
 // @Param key path string true "Key"
-// @Success 200 {string} string "Ok"
+// @Success 200 {object} ReadResponse
 // @Router /db/{key} [get]
 func (ctl *Controller) handleRead(c *gin.Context) {
 	key := c.Param("key")
 	value := ctl.Node.Store.Get(key)
 
-	status := http.StatusOK
-	c.String(status, value)
+	c.JSON(http.StatusOK, ReadResponse{Value: value})
 }
 
-// Handler for database writes (PUT /db/:key?value="<value>")
+// WriteRequest is a request body template for the write route
+type WriteRequest struct {
+	Value string `json:"value"`
+}
+
+// WriteResponse is a response body template for the write route
+type WriteResponse struct {
+	Status string `json:"status"`
+}
+
+// Handler for database writes
 // @Summary Write value to database by key
 // @ID db-write
-// @Accept */*
-// @Produce text/plain
+// @Accept application/json
+// @Produce application/json
 // @Param key path string true "Key"
-// @Param value query string false "Value"
-// @Success 200 {string} string "Ok"
+// @Param body body WriteRequest true "Value"
+// @Success 200 {object} WriteResponse
 // @Failure 307 {string} string "Temporary Redirect"
 // @Header 307 {string} Location "Redirect address of the current leader"
+// @Failure 400 {string} string "Error message"
 // @Router /db/{key} [put]
 func (ctl *Controller) handleWrite(c *gin.Context) {
 	// todo: add redirect if not leader, use "Location:" header
 	key := c.Param("key")
-	value := c.Request.URL.Query().Get("value")
-
-	if err := ctl.Node.Set(key, value); err != nil {
-		c.String(http.StatusInternalServerError, err.Error())
+	var body WriteRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
 
-	status := http.StatusOK
-	c.String(status, "Ok")
+	if err := ctl.Node.Set(key, body.Value); err != nil {
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, WriteResponse{Status: "Ok"})
 }
 
-// Handler for database deletes (DELETE /db/:key)
+// DeleteResponse is a response body template for the write route
+type DeleteResponse struct {
+	Status string `json:"status"`
+}
+
+// Handler for database deletes
 // @Summary Delete item from database by key
 // @ID db-delete
 // @Accept */*
-// @Produce text/plain
+// @Produce application/json
 // @Param key path string true "Key"
-// @Success 200 {string} string "Ok"
+// @Success 200 {object} DeleteResponse
 // @Failure 307 {string} string "Temporary Redirect"
 // @Header 307 {string} Location "Redirect address of current leader"
 // @Router /db/{key} [delete]
@@ -120,9 +141,7 @@ func (ctl *Controller) handleDelete(c *gin.Context) {
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	status := http.StatusOK
-	c.String(status, "Ok")
+	c.JSON(http.StatusOK, DeleteResponse{Status: "Ok"})
 }
 
 // buildRouter hooks endpoints for Node/Database ops
