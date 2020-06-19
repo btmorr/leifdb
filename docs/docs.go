@@ -34,7 +34,7 @@ var doc = `{
                     "*/*"
                 ],
                 "produces": [
-                    "text/plain"
+                    "application/json"
                 ],
                 "summary": "Return value from database by key",
                 "operationId": "db-read",
@@ -49,19 +49,19 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Ok",
+                        "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/main.ReadResponse"
                         }
                     }
                 }
             },
             "put": {
                 "consumes": [
-                    "*/*"
+                    "application/json"
                 ],
                 "produces": [
-                    "text/plain"
+                    "application/json"
                 ],
                 "summary": "Write value to database by key",
                 "operationId": "db-write",
@@ -74,17 +74,20 @@ var doc = `{
                         "required": true
                     },
                     {
-                        "type": "string",
                         "description": "Value",
-                        "name": "value",
-                        "in": "query"
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.WriteRequest"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Ok",
+                        "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/main.WriteResponse"
                         }
                     },
                     "307": {
@@ -95,8 +98,14 @@ var doc = `{
                         "headers": {
                             "Location": {
                                 "type": "string",
-                                "description": "localhost:8181"
+                                "description": "Redirect address of the current leader"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "Error message",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }
@@ -106,7 +115,7 @@ var doc = `{
                     "*/*"
                 ],
                 "produces": [
-                    "text/plain"
+                    "application/json"
                 ],
                 "summary": "Delete item from database by key",
                 "operationId": "db-delete",
@@ -121,9 +130,9 @@ var doc = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Ok",
+                        "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/main.DeleteResponse"
                         }
                     },
                     "307": {
@@ -134,7 +143,7 @@ var doc = `{
                         "headers": {
                             "Location": {
                                 "type": "string",
-                                "description": "localhost:8181"
+                                "description": "Redirect address of current leader"
                             }
                         }
                     }
@@ -163,7 +172,39 @@ var doc = `{
         }
     },
     "definitions": {
+        "main.DeleteResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "main.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.ReadResponse": {
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.WriteRequest": {
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.WriteResponse": {
             "type": "object",
             "properties": {
                 "status": {

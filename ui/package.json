@@ -14,10 +14,12 @@
     "typescript": "~3.7.2"
   },
   "devDependencies": {
+    "@azure/ms-rest-js": "^2.0.7",
     "@testing-library/jest-dom": "^4.2.4",
     "@testing-library/react": "^10.2.1",
     "@testing-library/user-event": "^7.1.2",
     "@types/jest": "^24.0.0",
+    "autorest": "^3.0.6187",
     "msw": "^0.19.2",
     "react-scripts": "3.4.1",
     "scale-color-perceptual": "^1.1.2"

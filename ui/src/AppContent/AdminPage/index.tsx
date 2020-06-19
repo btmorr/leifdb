@@ -1,13 +1,10 @@
 import React from 'react';
 import { Input, Space, Card } from 'antd';
 import { CheckCircleFilled, WarningFilled } from '@ant-design/icons';
+import * as Client from '../../leifDbClientAPI';
+import { Server } from '../../proptypes';
 
 const { Search } = Input;
-
-export interface Server {
-  address: string;
-  healthy: boolean;
-}
 
 export interface AdminPageProps {
   currentHost: Server;
@@ -16,17 +13,26 @@ export interface AdminPageProps {
 
 export default function AdminPage(props:AdminPageProps) {
 
-  function tryConnect(address: string, handler: React.Dispatch<React.SetStateAction<Server>>) {
-    const query = `http://${address}/health`
-    fetch(query)
+  function tryConnect(
+    address: string,
+    handler: React.Dispatch<React.SetStateAction<Server>>
+  ) {
+    const client = new Client.LeifDbClientAPI({baseUri: `http://${address}`});
+    client.httpHealth()
       .then(res => {
-        if (!res.ok) {
-          throw Error(res.statusText);
+        if (res.status !== "Ok") {
+          throw Error(`Health status ${res.status}`);
         }
         return res;
       })
-      .then(res => handler({address: address, healthy: res.ok}))
-      .catch(() => handler({address: address, healthy: false}));
+      .then(res => handler({
+        address: address,
+        healthy: res.status === "Ok",
+        client: client
+      }))
+      .catch(() => handler({
+        address: address,
+        healthy: false}));
   }
 
   function buildCard() {

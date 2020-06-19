@@ -1,5 +1,25 @@
 definitions:
+  main.DeleteResponse:
+    properties:
+      status:
+        type: string
+    type: object
   main.HealthResponse:
+    properties:
+      status:
+        type: string
+    type: object
+  main.ReadResponse:
+    properties:
+      value:
+        type: string
+    type: object
+  main.WriteRequest:
+    properties:
+      value:
+        type: string
+    type: object
+  main.WriteResponse:
     properties:
       status:
         type: string
@@ -25,17 +45,17 @@ paths:
         required: true
         type: string
       produces:
-      - text/plain
+      - application/json
       responses:
         "200":
-          description: Ok
+          description: OK
           schema:
-            type: string
+            $ref: '#/definitions/main.DeleteResponse'
         "307":
           description: Temporary Redirect
           headers:
             Location:
-              description: localhost:8181
+              description: Redirect address of current leader
               type: string
           schema:
             type: string
@@ -51,16 +71,16 @@ paths:
         required: true
         type: string
       produces:
-      - text/plain
+      - application/json
       responses:
         "200":
-          description: Ok
+          description: OK
           schema:
-            type: string
+            $ref: '#/definitions/main.ReadResponse'
       summary: Return value from database by key
     put:
       consumes:
-      - '*/*'
+      - application/json
       operationId: db-write
       parameters:
       - description: Key
@@ -69,22 +89,28 @@ paths:
         required: true
         type: string
       - description: Value
-        in: query
-        name: value
-        type: string
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.WriteRequest'
       produces:
-      - text/plain
+      - application/json
       responses:
         "200":
-          description: Ok
+          description: OK
           schema:
-            type: string
+            $ref: '#/definitions/main.WriteResponse'
         "307":
           description: Temporary Redirect
           headers:
             Location:
-              description: localhost:8181
+              description: Redirect address of the current leader
               type: string
+          schema:
+            type: string
+        "400":
+          description: Error message
           schema:
             type: string
       summary: Write value to database by key
