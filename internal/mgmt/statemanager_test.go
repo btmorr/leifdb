@@ -1,9 +1,8 @@
-// +build xfail
+// +build mgmttest
 
-// This test is timing-dependent, and can be flaky on a given run. Until we
-// have a better way of testing the timer logic, this test is run separately on
-// CI such that a failure on this step doesn't count as a failed build (but
-// will still be visible in the logs)
+// This test is timing-dependent, and fails if run along with the rest of the
+// test suite. Until we have a better way of testing the timer logic, this test
+// is run separately on CI
 
 package mgmt
 
