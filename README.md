@@ -50,13 +50,13 @@ To build and run the app manually on Linux/Unix:
 
 ```
 go clean
-go build -tags=unit,xfail -o leifdb
+go build -tags=unit,mgmttest -o leifdb
 ```
 
 On Windows:
 ```
 go clean
-go build -tags=unit,xfail -o leifdb.exe
+go build -tags=unit,mgmttest -o leifdb.exe
 ```
 
 Responses to client endpoints are string-formatted.
@@ -64,7 +64,8 @@ Responses to client endpoints are string-formatted.
 To manually run the test suite:
 
 ```
-go test -tags=unit,xfail ./...
+go test -tags=unit ./...
+go test -tags=mgmttest ./...
 ```
 
 After building the binary, to find out what command line parameters are available:
