@@ -31,18 +31,7 @@
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
-    "rules": {
-      "no-useless-constructor": "off",
-      "@typescript-eslint/no-useless-constructor": "off"
-    },
-    "overrides": [
-      {
-        "files": ["**/*.ts?(x)"],
-        "rules": {
-          "@typescript-eslint/no-useless-constructor": "off"
-        }
-      }
-    ]
+    "extends": "react-app"
   },
   "browserslist": {
     "production": [
