@@ -18,6 +18,16 @@ Ensure that `yarn` is installed, along with the most recent LTS version of Node.
 yarn
 ```
 
+## Updates to the server API
+
+If the server API changes (e.g.: if there is a change to "docs/swagger.[json|yaml]"), you will need to re-generate the client code used in this project, by running:
+
+```
+make autorest
+```
+
+Then, make sure that everything compiles and that test mocks correctly reflect API changes.
+
 ## Available Scripts
 
 In this directory, you can run:
