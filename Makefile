@@ -4,8 +4,8 @@ binary_prefix = leifdb-
 
 .PHONY: test
 test: app
-	go test -tags=unit -coverprofile=coverage.out ./...
-	go test -tags=mgmttest -coverprofile=mgmttest_coverage.out ./...
+	go test -v -tags=unit -coverprofile=coverage.out ./...
+	go test -v -tags=mgmttest -coverprofile=mgmttest_coverage.out ./...
 
 .PHONY: viewcoverage
 viewcoverage: coverage.out
@@ -14,7 +14,7 @@ viewcoverage: coverage.out
 
 .PHONY: benchmark
 benchmark:
-	go test -tags=bench -bench=. ./...
+	go test -v -tags=bench -bench=. ./...
 
 .PHONY: clean
 clean:
@@ -30,7 +30,6 @@ app: clean
 	swag init
 	gofmt -w -s .
 	go vet
-	go fix ./...
 	go build -tags=unit,mgmttest -o $(binary_prefix)$(version)
 
 .PHONY: protobuf

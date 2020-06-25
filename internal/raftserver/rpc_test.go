@@ -4,7 +4,6 @@ package raftserver
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"testing"
@@ -60,8 +59,6 @@ type appendTestCase struct {
 }
 
 func TestAppend(t *testing.T) {
-	log.Println("~~~ TestAppend")
-
 	addr := "localhost:8080"
 	testDir, _ := util.CreateTmpDir(".tmp-leifdb")
 	t.Cleanup(func() {
@@ -234,8 +231,6 @@ type voteTestCase struct {
 }
 
 func TestVote(t *testing.T) {
-	log.Println("~~~ TestVote")
-
 	n := setupServer(t)
 	testAddr := "localhost:12345"
 	s := server{Node: n}
@@ -281,7 +276,6 @@ func TestVote(t *testing.T) {
 
 		reply, err := s.RequestVote(ctx, tc.request)
 		time.Sleep(time.Microsecond * 300)
-		fmt.Printf("[%s] Reply: %+v\n", tc.name, reply)
 		if err != nil {
 			t.Errorf("[%s] Unexpected error: %v", tc.name, err)
 		}

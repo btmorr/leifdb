@@ -42,7 +42,6 @@ func setupServer(t *testing.T) (*gin.Engine, *node.Node) {
 }
 
 func TestHealthRoute(t *testing.T) {
-	log.Println("~~~ TestHealthRoute")
 	router, _ := setupServer(t)
 
 	w := httptest.NewRecorder()
@@ -55,7 +54,6 @@ func TestHealthRoute(t *testing.T) {
 }
 
 func TestReadAfterWrite(t *testing.T) {
-	log.Println("~~~ TestReadAfterWrite")
 	router, _ := setupServer(t)
 
 	v := "testy"
@@ -92,7 +90,6 @@ func TestReadAfterWrite(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	log.Println("~~~ TestDelete")
 	router, _ := setupServer(t)
 
 	v := "testy"
