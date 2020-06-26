@@ -19,5 +19,6 @@
 
 for FILENAME in "$@"
 do
-  perl -0777 -i -pe 's/\/\*\n \*\//\/\* eslint-disable \*\//s' $FILENAME
+  perl -0777 -i -pe 's/\/\*\n \*\/\n\n//s' $FILENAME
+  awk 'BEGIN {print "/\* eslint-disable \*/\n"} {print $0}' "$FILENAME" > tmp && mv tmp "$FILENAME"
 done
