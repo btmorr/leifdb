@@ -8,7 +8,7 @@ LeifDb a clustered K-V store application that implements [Raft] for consistency,
 
 The aim of this project is to build a distributed, consistent, fault-tolerant database along the lines of [etcd], which backs [Kubernetes]; [Consul], which backs [Vault] and other HashiCorp tools; or [ZooKeeper], which backs most Hadoop-related projects. (etcd and Consul use Raft, ZooKeeper uses a similar algorithm called [Zab], and there are others that use other algorithms such as [Paxos])
 
-Contributions are welcome! Check out the [Contributing Guide] for more info on how to make feature requests, subtmit bug reports, or create pull requests.
+Contributions are welcome! Check out the [Contributing Guide] for more info on how to make feature requests, submit bug reports, or create pull requests.
 
 ## Install
 
@@ -144,7 +144,7 @@ The gRPC interface is used for interactions between members of the Raft cluster.
 
 ### Data directory
 
-The persistent data directory is used for storing configuration files and non-volatile server state, and can be specified using the `-data` flag with a path. The path may point to a non-existent location, but cannot exactly match a extant file (an extant directory is fine). If no value is provided, "$HOME/.leifdb/<addr_hash>" is used, where "<addr_hash>" is a non-cryptographic hash of the gRPC interface for the server (such that configration is consistent for a server as long as it is deployed with the same IP address and same port specified by `-raftport`)
+The persistent data directory is used for storing configuration files and non-volatile server state, and can be specified using the `-data` flag with a path. The path may point to a non-existent location, but cannot exactly match an existing file (an existing directory is fine). If no value is provided, "$HOME/.leifdb/<addr_hash>" is used, where "<addr_hash>" is a non-cryptographic hash of the gRPC interface for the server (such that configuration is consistent for a server as long as it is deployed with the same IP address and same port specified by `-raftport`)
 
 ### Cluster configuration
 
