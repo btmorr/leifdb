@@ -41,8 +41,6 @@ func setupNode(t *testing.T) *Node {
 }
 
 func TestPersistence(t *testing.T) {
-	log.Println("~~~ TestPersistence")
-
 	addr := "localhost:8080"
 
 	testDir, _ := util.CreateTmpDir(".tmp-leifdb")

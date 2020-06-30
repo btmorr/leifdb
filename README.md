@@ -304,7 +304,7 @@ Aside from the Raft papers themselves, here are some related resources:
 [license]: https://github.com/btmorr/leifdb/LICENSE
 [license-badge]: https://img.shields.io/github/license/btmorr/leifdb.svg
 [build]: https://travis-ci.com/btmorr/leifdb
-[build-badge]: https://travis-ci.com/btmorr/leifdb.svg?branch=master
+[build-badge]: https://travis-ci.com/btmorr/leifdb.svg?branch=edge
 
 [Contributing Guide]: ./CONTRIBUTING.md
 [example config file]: ./config/default_config.toml

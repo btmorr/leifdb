@@ -1,13 +1,17 @@
-language: go
-
-before_install:
-  - nvm install --lts
-  - make install
-  - make -C ui
-
-go:
-  - 1.14.x
-
-script:
-  - make
-  - make -C ui build test
+jobs:
+  include:
+    - stage: test-ui
+      name: "UI build and test"
+      language: node_js
+      node_js: lts/*
+      script:
+        - make -C ui install
+        - make -C ui build
+        - make -C ui test
+    - stage: test-server
+      name: "Server build and test"
+      language: go
+      go: 1.14.x
+      script:
+        - make install
+        - make test
