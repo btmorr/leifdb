@@ -304,13 +304,13 @@ func (n *Node) DoElection() bool {
 	log.Trace().Msg("Starting Election")
 	n.setTerm(n.Term+1, n.NodeId)
 
-	numNodes := len(n.otherNodes)
+	numNodes := len(n.otherNodes) + 1
 	majority := (numNodes / 2) + 1
 	var success bool
 
 	log.Info().
 		Int64("Term", n.Term).
-		Int("clusterSize", len(n.otherNodes)+1).
+		Int("clusterSize", numNodes).
 		Int("needed", majority).
 		Msg("Becoming candidate")
 
