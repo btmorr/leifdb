@@ -19,6 +19,7 @@ benchmark:
 .PHONY: clean
 clean:
 	go clean
+	rm -rf ./build || true
 	rm ./$(binary_prefix)* || true
 
 .PHONY: install
@@ -39,6 +40,11 @@ protobuf:
 	cp ./github.com/btmorr/leifdb/internal/raft/* ./internal/raft/
 	rm -rf ./github.com
 
-.PHONY: run
-run: leifdb-$(version)
-	./leifdb-$(version) $(run_opts)
+# Note this is not working completely correctly now, as the default config file
+# does not work out of the box--revisit after consolidating configration and
+# making it more amenable to containerization
+.PHONY: container
+container:
+	env GOOS=linux GOARCH=amd64 go build -o build/leifdb
+	cp config/default_config.toml build/config.toml
+	docker build -t leifdb:0 .

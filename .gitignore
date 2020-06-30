@@ -5,6 +5,7 @@
 *.so
 *.dylib
 leifdb-*
+build
 
 # Test binary, built with `go test -c`
 *.test
@@ -34,4 +35,3 @@ ui/coverage
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
