@@ -23,6 +23,7 @@ func checkForeignNodeMock(addr string, known map[string]*ForeignNode) bool {
 // a test directory that is automatically cleaned up after each test
 func setupNode(t *testing.T) *Node {
 	addr := "localhost:8080"
+	clientAddr := "localhost:16990"
 
 	testDir, err := util.CreateTmpDir(".tmp-leifdb")
 	if err != nil {
@@ -34,7 +35,7 @@ func setupNode(t *testing.T) *Node {
 
 	store := db.NewDatabase()
 
-	config := NewNodeConfig(testDir, addr, make([]string, 0, 0))
+	config := NewNodeConfig(testDir, addr, clientAddr, make([]string, 0, 0))
 	n, _ := NewNode(config, store)
 	n.CheckForeignNode = checkForeignNodeMock
 	return n
@@ -42,23 +43,30 @@ func setupNode(t *testing.T) *Node {
 
 func TestPersistence(t *testing.T) {
 	addr := "localhost:8080"
+	clientAddr := "localhost:16990"
 
 	testDir, _ := util.CreateTmpDir(".tmp-leifdb")
 	t.Cleanup(func() {
 		util.RemoveTmpDir(testDir)
 	})
 
-	config := NewNodeConfig(testDir, addr, make([]string, 0, 0))
+	config := NewNodeConfig(testDir, addr, clientAddr, make([]string, 0, 0))
 
-	termRecord := &raft.TermRecord{Term: 5, VotedFor: "localhost:8181"}
+	termRecord := &raft.TermRecord{Term: 5, VotedFor: &raft.Node{
+		Id:         "localhost:8181",
+		ClientAddr: "localhost:80",
+	}}
 	WriteTerm(config.TermFile, termRecord)
 
 	termData := ReadTerm(config.TermFile)
 	if termData.Term != termRecord.Term {
 		t.Error("Term data file roundtrip incorrect term:", termData.Term)
 	}
-	if termData.VotedFor != termRecord.VotedFor {
-		t.Error("Term data file roundtrip incorrect vote:", termData.VotedFor)
+	if termData.VotedFor.Id != termRecord.VotedFor.Id {
+		t.Error("Term data file roundtrip incorrect vote:", termData.VotedFor.Id)
+	}
+	if termData.VotedFor.ClientAddr != termRecord.VotedFor.ClientAddr {
+		t.Error("Term data file roundtrip incorrect Client Addr:", termData.VotedFor.ClientAddr)
 	}
 
 	logCache := &raft.LogStore{
@@ -148,13 +156,18 @@ func TestReconcileLogs(t *testing.T) {
 	overlapLog := &raft.LogStore{
 		Entries: append(firstThree[:2], nextTwo...)}
 
+	raftNode := &raft.Node{
+		Id:         "localhost:16991",
+		ClientAddr: "localhost:8181",
+	}
+
 	testCases := []ReconcileTestCase{
 		{
 			Name:  "Empty log and request",
 			Store: emptyLog,
 			Request: &raft.AppendRequest{
 				Term:         0,
-				LeaderId:     "localhost:8181",
+				Leader:       raftNode,
 				PrevLogIndex: -1,
 				PrevLogTerm:  -1,
 				LeaderCommit: -1,
@@ -165,7 +178,7 @@ func TestReconcileLogs(t *testing.T) {
 			Store: emptyLog,
 			Request: &raft.AppendRequest{
 				Term:         3,
-				LeaderId:     "localhost:8181",
+				Leader:       raftNode,
 				PrevLogIndex: -1,
 				PrevLogTerm:  -1,
 				LeaderCommit: -1,
@@ -176,7 +189,7 @@ func TestReconcileLogs(t *testing.T) {
 			Store: starterLog,
 			Request: &raft.AppendRequest{
 				Term:         6,
-				LeaderId:     "localhost:8181",
+				Leader:       raftNode,
 				PrevLogIndex: 2,
 				PrevLogTerm:  3,
 				LeaderCommit: -1,
@@ -187,7 +200,7 @@ func TestReconcileLogs(t *testing.T) {
 			Store: appendLog,
 			Request: &raft.AppendRequest{
 				Term:         6,
-				LeaderId:     "localhost:8181",
+				Leader:       raftNode,
 				PrevLogIndex: 2,
 				PrevLogTerm:  3,
 				LeaderCommit: -1,
@@ -198,7 +211,7 @@ func TestReconcileLogs(t *testing.T) {
 			Store: starterLog,
 			Request: &raft.AppendRequest{
 				Term:         6,
-				LeaderId:     "localhost:8181",
+				Leader:       raftNode,
 				PrevLogIndex: 1,
 				PrevLogTerm:  2,
 				LeaderCommit: -1,
@@ -258,7 +271,10 @@ func TestCommitLogs(t *testing.T) {
 			Key:    "Ron"}}
 
 	currentTerm := int64(6)
-	currentLead := "localhost:8181"
+	currentLead := &raft.Node{
+		Id:         "localhost:8181",
+		ClientAddr: "localhost:80",
+	}
 
 	testCases := []CommitTestCase{
 		{
@@ -266,7 +282,7 @@ func TestCommitLogs(t *testing.T) {
 			Store: emptyLog,
 			Request: &raft.AppendRequest{
 				Term:         currentTerm,
-				LeaderId:     currentLead,
+				Leader:       currentLead,
 				PrevLogIndex: -1,
 				PrevLogTerm:  -1,
 				LeaderCommit: -1,
@@ -280,7 +296,7 @@ func TestCommitLogs(t *testing.T) {
 			Store: starterLog,
 			Request: &raft.AppendRequest{
 				Term:         currentTerm,
-				LeaderId:     currentLead,
+				Leader:       currentLead,
 				PrevLogIndex: 2,
 				PrevLogTerm:  3,
 				LeaderCommit: 1,
@@ -294,7 +310,7 @@ func TestCommitLogs(t *testing.T) {
 			Store: starterLog,
 			Request: &raft.AppendRequest{
 				Term:         currentTerm,
-				LeaderId:     currentLead,
+				Leader:       currentLead,
 				PrevLogIndex: 2,
 				PrevLogTerm:  3,
 				LeaderCommit: 2,
@@ -308,7 +324,7 @@ func TestCommitLogs(t *testing.T) {
 			Store: starterLog,
 			Request: &raft.AppendRequest{
 				Term:         currentTerm,
-				LeaderId:     currentLead,
+				Leader:       currentLead,
 				PrevLogIndex: 4,
 				PrevLogTerm:  6,
 				LeaderCommit: 4,
@@ -336,13 +352,16 @@ func TestUpdateTermViaAppend(t *testing.T) {
 	n := setupNode(t)
 
 	startTerm := int64(3)
-	otherNodeId := "localhost:8181"
-	n.SetTerm(startTerm, otherNodeId)
+	otherNode := &raft.Node{
+		Id:         "localhost:8181",
+		ClientAddr: "localhost:80",
+	}
+	n.SetTerm(startTerm, otherNode)
 
 	newTerm := startTerm + 1
 	req := &raft.AppendRequest{
 		Term:         newTerm,
-		LeaderId:     otherNodeId,
+		Leader:       otherNode,
 		PrevLogIndex: -1,
 		PrevLogTerm:  -1,
 		Entries:      make([]*raft.LogRecord, 0, 0),
@@ -354,7 +373,7 @@ func TestUpdateTermViaAppend(t *testing.T) {
 	if n.Term != newTerm {
 		t.Errorf("Expected term %d but got %d", newTerm, n.Term)
 	}
-	if n.votedFor != otherNodeId {
-		t.Errorf("Expected voted for %s but got %s", otherNodeId, n.votedFor)
+	if n.votedFor.Id != otherNode.Id {
+		t.Errorf("Expected voted for %s but got %s", otherNode.Id, n.votedFor.Id)
 	}
 }

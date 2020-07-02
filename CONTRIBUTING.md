@@ -36,6 +36,7 @@ To install protoc, download the package for your OS [here](https://github.com/pr
 
 ```
 go install google.golang.org/protobuf/cmd/protoc-gen-go
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
 ```
 
 Additionally this repo includes a Makefile with tasks for common workflows. Your OS may already have [make](https://www.gnu.org/software/make/) installed (you can check on a Linux/Unix system using `which make` or on Windows using `Get-Command make` in PowerShell). If you don't have it installed, you can get it via a package manager (ex: `yum` for Centos, `apt` for Debian/Ubuntu, [`brew`](https://brew.sh) for MacOS, or [Chocolatey](https://chocolatey.org) for Windows).
@@ -61,3 +62,4 @@ The version number is currently determined by a variable in "version.sh". The `m
 ## Contributors
 
 [Toma Morris](https://github.com/btmorr)
+[Suhail Patel](https://github.com/suhailpatel)

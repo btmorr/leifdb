@@ -28,6 +28,7 @@ func checkMock(addr string, known map[string]*node.ForeignNode) bool {
 // and creates a test directory that is cleaned up after each test
 func setupServer(t *testing.T) *node.Node {
 	addr := "localhost:16990"
+	clientAddr := "localhost:8080"
 
 	testDir, err := util.CreateTmpDir(".tmp-leifdb")
 	if err != nil {
@@ -39,7 +40,7 @@ func setupServer(t *testing.T) *node.Node {
 
 	store := db.NewDatabase()
 
-	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
+	config := node.NewNodeConfig(testDir, addr, clientAddr, make([]string, 0, 0))
 	n, _ := node.NewNode(config, store)
 	n.CheckForeignNode = checkMock
 	return n
@@ -48,7 +49,7 @@ func setupServer(t *testing.T) *node.Node {
 type appendTestCase struct {
 	name            string
 	sendTerm        int64
-	sendId          string
+	sendId          *raft.Node
 	sendPrevIdx     int64
 	sendPrevTerm    int64
 	sendCommit      int64
@@ -59,18 +60,27 @@ type appendTestCase struct {
 }
 
 func TestAppend(t *testing.T) {
-	addr := "localhost:8080"
+	addr := "localhost:16990"
+	clientAddr := "localhost:8080"
+
 	testDir, _ := util.CreateTmpDir(".tmp-leifdb")
 	t.Cleanup(func() {
 		util.RemoveTmpDir(testDir)
 	})
 
-	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
+	config := node.NewNodeConfig(testDir, addr, clientAddr, make([]string, 0, 0))
 
-	validLeaderId := "localhost:8181"
-	invalidLeaderId := "localhost:12345"
+	validLeader := &raft.Node{
+		Id:         "localhost:16991",
+		ClientAddr: "localhost:8081",
+	}
 
-	termRecord := &raft.TermRecord{Term: 5, VotedFor: validLeaderId}
+	invalidLeader := &raft.Node{
+		Id:         "localhost:12345",
+		ClientAddr: "localhost:9999",
+	}
+
+	termRecord := &raft.TermRecord{Term: 5, VotedFor: validLeader}
 	node.WriteTerm(config.TermFile, termRecord)
 
 	starterLog := &raft.LogStore{
@@ -114,7 +124,7 @@ func TestAppend(t *testing.T) {
 		{
 			name:            "Expired term",
 			sendTerm:        termRecord.Term - 1,
-			sendId:          validLeaderId,
+			sendId:          validLeader,
 			sendPrevIdx:     0,
 			sendPrevTerm:    0,
 			sendCommit:      0,
@@ -125,7 +135,7 @@ func TestAppend(t *testing.T) {
 		{
 			name:            "Invalid leader",
 			sendTerm:        termRecord.Term,
-			sendId:          invalidLeaderId,
+			sendId:          invalidLeader,
 			sendPrevIdx:     0,
 			sendPrevTerm:    0,
 			sendCommit:      2,
@@ -136,7 +146,7 @@ func TestAppend(t *testing.T) {
 		{
 			name:            "Empty valid request",
 			sendTerm:        termRecord.Term,
-			sendId:          validLeaderId,
+			sendId:          validLeader,
 			sendPrevIdx:     prevIdx,
 			sendPrevTerm:    prevTerm,
 			sendCommit:      0,
@@ -147,7 +157,7 @@ func TestAppend(t *testing.T) {
 		{
 			name:            "New record",
 			sendTerm:        termRecord.Term,
-			sendId:          validLeaderId,
+			sendId:          validLeader,
 			sendPrevIdx:     prevIdx,
 			sendPrevTerm:    prevTerm,
 			sendCommit:      0,
@@ -158,7 +168,7 @@ func TestAppend(t *testing.T) {
 		{
 			name:            "Commit some logs",
 			sendTerm:        termRecord.Term,
-			sendId:          validLeaderId,
+			sendId:          validLeader,
 			sendPrevIdx:     prevIdx,
 			sendPrevTerm:    prevTerm,
 			sendCommit:      1,
@@ -173,7 +183,7 @@ func TestAppend(t *testing.T) {
 		{
 			name:            "Commit all logs",
 			sendTerm:        termRecord.Term,
-			sendId:          validLeaderId,
+			sendId:          validLeader,
 			sendPrevIdx:     prevIdx,
 			sendPrevTerm:    prevTerm,
 			sendCommit:      int64(len(updatedLog.Entries) - 1),
@@ -194,7 +204,7 @@ func TestAppend(t *testing.T) {
 	for _, tc := range testCases {
 		req := &raft.AppendRequest{
 			Term:         tc.sendTerm,
-			LeaderId:     tc.sendId,
+			Leader:       tc.sendId,
 			PrevLogIndex: tc.sendPrevIdx,
 			PrevLogTerm:  tc.sendPrevTerm,
 			Entries:      tc.sendRecords,
@@ -232,7 +242,12 @@ type voteTestCase struct {
 
 func TestVote(t *testing.T) {
 	n := setupServer(t)
-	testAddr := "localhost:12345"
+
+	testRaftNode := &raft.Node{
+		Id:         "localhost:12345",
+		ClientAddr: "localhost:9999",
+	}
+
 	s := server{Node: n}
 	// Simulating node in leader position, rather than adding a time.Sleep
 	n.State = mgmt.Leader
@@ -253,7 +268,7 @@ func TestVote(t *testing.T) {
 			name: "Vote request expired term",
 			request: &raft.VoteRequest{
 				Term:         1,
-				CandidateId:  testAddr,
+				Candidate:    testRaftNode,
 				LastLogIndex: -1,
 				LastLogTerm:  0},
 			expectTerm:      2,
@@ -263,7 +278,7 @@ func TestVote(t *testing.T) {
 			name: "Vote request valid",
 			request: &raft.VoteRequest{
 				Term:         3,
-				CandidateId:  testAddr,
+				Candidate:    testRaftNode,
 				LastLogIndex: -1,
 				LastLogTerm:  0},
 			expectTerm:      3,
@@ -292,6 +307,13 @@ func TestVote(t *testing.T) {
 				tc.name,
 				tc.expectTerm,
 				reply.Term)
+		}
+		// Ensure node has been propagated
+		if reply.Node != n.RaftNode {
+			t.Errorf("[%s] Expected node to be a %v but it was %v",
+				tc.name,
+				n.RaftNode,
+				reply.Node)
 		}
 		// Ensure node logs are as expected
 		if n.State != tc.expectNodeState {

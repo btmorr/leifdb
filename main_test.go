@@ -15,6 +15,7 @@ import (
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/mgmt"
 	"github.com/btmorr/leifdb/internal/node"
+	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/btmorr/leifdb/internal/util"
 	"github.com/gin-gonic/gin"
 )
@@ -22,7 +23,8 @@ import (
 // setupServer configures a Database, Node, and router for test, and creates
 // a test directory that is automatically cleaned up after each test
 func setupServer(t *testing.T) (*gin.Engine, *node.Node) {
-	addr := "localhost:8080"
+	addr := "localhost:16990"
+	clientAddr := "localhost:8080"
 
 	testDir, err := util.CreateTmpDir(".tmp-leifdb")
 	if err != nil {
@@ -34,7 +36,7 @@ func setupServer(t *testing.T) (*gin.Engine, *node.Node) {
 
 	store := db.NewDatabase()
 
-	config := node.NewNodeConfig(testDir, addr, make([]string, 0, 0))
+	config := node.NewNodeConfig(testDir, addr, clientAddr, make([]string, 0, 0))
 	n, _ := node.NewNode(config, store)
 	router := buildRouter(n)
 	n.State = mgmt.Leader
@@ -94,7 +96,10 @@ func TestWriteRedirect(t *testing.T) {
 
 	// Change our node so we become a follower
 	node.State = mgmt.Follower
-	node.SetTerm(node.Term + 1, "localhost:8081")
+	node.SetTerm(node.Term+1, &raft.Node{
+		Id:         "localhost:16991",
+		ClientAddr: "localhost:8081",
+	})
 
 	v := "testy"
 	body1 := WriteRequest{Value: v}
@@ -182,7 +187,10 @@ func TestDeleteRedirect(t *testing.T) {
 
 	// Change our node so we become a follower
 	node.State = mgmt.Follower
-	node.SetTerm(node.Term + 1, "localhost:8081")
+	node.SetTerm(node.Term+1, &raft.Node{
+		Id:         "localhost:16991",
+		ClientAddr: "localhost:8081",
+	})
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("DELETE", "/db/stuff", nil)

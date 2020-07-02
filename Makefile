@@ -34,7 +34,7 @@ app: clean
 
 .PHONY: protobuf
 protobuf:
-	protoc -I=./api ./api/raft.proto --go_out=plugins=grpc:.
+	protoc -I=./api ./api/raft.proto --go_out=. --go-grpc_out=.
 	mkdir -p ./internal/raft
 	cp ./github.com/btmorr/leifdb/internal/raft/* ./internal/raft/
 	rm -rf ./github.com
