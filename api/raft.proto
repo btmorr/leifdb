@@ -9,9 +9,14 @@ service Raft {
 	rpc AppendLogs (AppendRequest) returns (AppendReply) {}
 }
 
+message Node {
+	string id = 1;
+	string clientAddr = 2;
+}
+
 message VoteRequest {
 	int64 term = 1;
-	string candidateId = 2;
+	Node candidate = 2;
 	int64 lastLogIndex = 3;
 	int64 lastLogTerm = 4;
 }
@@ -23,11 +28,12 @@ message VoteReply {
 
 message AppendRequest {
 	int64 term = 1;
-	string leaderId = 2;
+	Node leader = 2;
 	int64 prevLogIndex = 3;
 	int64 prevLogTerm = 4;
 	int64 leaderCommit = 5;
 	repeated LogRecord entries = 6;
+
 }
 
 message AppendReply {
