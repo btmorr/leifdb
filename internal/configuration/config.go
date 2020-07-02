@@ -2,17 +2,17 @@ package configuration
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"hash/fnv"
 	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/btmorr/leifdb/internal/util"
-	"github.com/spf13/viper"
 )
 
 var (
@@ -62,11 +62,11 @@ const (
 // A ServerConfig contains the configuation values needed for other parts of
 // the server (see `BuildConfig`)
 type ServerConfig struct {
-	IpAddr     net.IP
+	Host       string
 	DataDir    string
-	RaftPort   int
+	RaftPort   string
 	RaftAddr   string
-	ClientPort int
+	ClientPort string
 	ClientAddr string
 	Mode       ClusterMode
 	NodeIds    []string
@@ -77,78 +77,124 @@ type ClusterConfig struct {
 	NodeIds []string
 }
 
-func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
-	// Application defaults to single-node operation. To configure, copy
-	// "config/default_config.toml" to "<data directory>/config.toml"
-	// and then edit. By default, looks for "$HOME/.leifdb/config.toml"
-	// and falls back to single-node configuration if not found.
-	viper.SetConfigName("config")
-	viper.AddConfigPath(dataDir)
-
-	mode := SingleNode
-	otherNodes := make([]string, 0, 0)
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			// Config file was found but another error was produced
+func resolveHostPort(addr string) ([]string, string) {
+	// is addr's host portion an IP or a DNS name?
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		fmt.Printf("Error splitting %s\n", addr)
+		panic(err)
+	}
+	var ips []string
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// this means host is not an IP (expect it is a DNS name)
+		ips, err = net.LookupHost(host)
+		if err != nil {
+			fmt.Printf("Error looking up %s\n", host)
 			panic(err)
 		}
-		// No config file found -- defaulting to single-node configuration
 	} else {
-		// Config file found and successfully parsed
-		if viper.GetString("configuration.mode") == "multi" {
-			mode = MultiNode
-			svs := viper.GetStringSlice("configuration.members")
-			if len(svs) < 2 {
-				panic(ErrInvalidMultiConfig)
-			}
-
-			selfInConfig := false
-			for _, s := range svs {
-				subv := viper.Sub(s)
-				addr := subv.GetString("host")
-				port := subv.GetInt("port")
-				// fmt.Printf("%s at %s:%d\n", s, addr, port)
-				nodeId := fmt.Sprintf("%s:%d", addr, port)
-				if nodeId != raftAddr {
-					// Don't include self in `otherNodes`
-					otherNodes = append(otherNodes, nodeId)
-				} else {
-					selfInConfig = true
-				}
-			}
-			if !selfInConfig {
-				panic(ErrSelfNotInConfig)
-			}
-		} // else single node configuration
+		ips = []string{string(ip)}
 	}
-	return &ClusterConfig{
-		Mode:    mode,
-		NodeIds: otherNodes}
+	return ips, port
 }
 
-// BuildConfig performs all operations needed to parse configuration options,
-// whether commandline flags, config file parsing, or boot-time environment
-// variable checks, precompute other static configration values from those
-// options, and perform tasks that ensure that the configration is locally
-// valid (such as checking that the IP and RaftPort for this machine are
-//  included in the cluster configuration)
+// selectForeignNodes returns all members that are not the same as raftAddr.
+// raftAddr may be an IP address or a DNS name. Same goes for each entry in
+// members. Resolve all of them to all their possible IPs, and check that at
+// least one of the IP:Port addresses for raftAddr is in the list of IP:Port
+// addresses of all members.
+func selectForeignNodes(raftAddr string, members []string) []string {
+	foreignNodes := []string{}
+	ips, port := resolveHostPort(raftAddr)
+
+	candidates := []string{}
+	for _, ip := range ips {
+		candidates = append(candidates, net.JoinHostPort(ip, port))
+	}
+
+	// for each member of the cluster, find all possible IP addresses and check
+	// against all possible IPs for the current node
+	for _, member := range members {
+		match := false
+		memberIps, memberPort := resolveHostPort(member)
+
+		for _, ip := range memberIps {
+			option := net.JoinHostPort(ip, memberPort)
+			for _, candidate := range candidates {
+				if candidate == option {
+					match = true
+				}
+			}
+		}
+		// If none of the IPs for the current node match any IP for the member,
+		// add the member to the foreign node list
+		if !match {
+			foreignNodes = append(foreignNodes, member)
+		}
+	}
+
+	return foreignNodes
+}
+
+func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
+	// Application defaults to single-node operation
+	var members []string
+	var mode ClusterMode
+	modeEnv := os.Getenv("LEIFDB_MODE")
+
+	if modeEnv == "multi" {
+		mode = MultiNode
+		members = strings.Split(os.Getenv("LEIFDB_MEMBER_NODES"), ",")
+		fmt.Printf("Multi-node cluster, members: %v\n", members)
+	} else {
+		mode = SingleNode
+		members = []string{raftAddr}
+		fmt.Printf("Single-node cluster, address: %v\n", members)
+	}
+
+	foreignNodes := selectForeignNodes(raftAddr, members)
+	if len(foreignNodes) == len(members) {
+		fmt.Printf(
+			"Error: %s not found in cluster membership %v\n", raftAddr, members)
+		panic(ErrSelfNotInConfig)
+	}
+
+	return &ClusterConfig{
+		Mode:    mode,
+		NodeIds: foreignNodes}
+}
+
+// BuildConfig performs all operations needed to parse configuration options
+// from environment variables, precompute other static configration values from
+// those options, and perform tasks that ensure that the configration is
+// locally valid (such as checking that the IP and RaftPort for this machine
+// are included in the cluster configuration)
 func BuildServerConfig() *ServerConfig {
-	dataDirP := flag.String(
-		"data", "", "Path to directory for data storage")
-	raftPortP := flag.Int(
-		"raftport", 16990, "Port number for Raft gRPC service interface")
-	clientPortP := flag.Int(
-		"httpport", 8080, "Port number for database HTTP service interface")
-	flag.Parse()
+	dataDir := os.Getenv("LEIFDB_DATA_DIR")
+	raftPort := os.Getenv("LEIFDB_RAFT_PORT")
+	if raftPort == "" {
+		raftPort = "16990"
+	}
+	if _, err := strconv.Atoi(raftPort); err != nil {
+		panic(err)
+	}
 
-	dataDir := *dataDirP
-	raftPort := *raftPortP
-	clientPort := *clientPortP
+	clientPort := os.Getenv("LEIFDB_CLIENT_PORT")
+	if clientPort == "" {
+		clientPort = "8080"
+	}
+	if _, err := strconv.Atoi(clientPort); err != nil {
+		panic(err)
+	}
 
-	ip := GetOutboundIP()
+	host := os.Getenv("LEIFDB_HOST")
+	if host == "" {
+		host = GetOutboundIP().String()
+	}
 
-	raftAddr := fmt.Sprintf("%s:%d", ip, raftPort)
-	clientAddr := fmt.Sprintf("%s:%d", ip, clientPort)
+	raftAddr := net.JoinHostPort(host, raftPort)
+	clientAddr := net.JoinHostPort(host, clientPort)
 
 	if dataDir == "" {
 		hash := fnv.New32()
@@ -166,7 +212,7 @@ func BuildServerConfig() *ServerConfig {
 	ccfg := buildClusterConfig(dataDir, raftAddr)
 
 	return &ServerConfig{
-		IpAddr:     ip,
+		Host:       host,
 		DataDir:    dataDir,
 		RaftPort:   raftPort,
 		RaftAddr:   raftAddr,

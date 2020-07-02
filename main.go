@@ -215,8 +215,8 @@ func main() {
 			}
 		}) // Call when append ticker cycles
 
-	raftPortString := fmt.Sprintf(":%d", cfg.RaftPort)
-	clientPortString := fmt.Sprintf(":%d", cfg.ClientPort)
+	raftPortString := fmt.Sprintf(":%s", cfg.RaftPort)
+	clientPortString := fmt.Sprintf(":%s", cfg.ClientPort)
 	go raftserver.StartRaftServer(raftPortString, n)
 	router := buildRouter(n)
 	router.Run(clientPortString)
