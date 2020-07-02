@@ -113,8 +113,7 @@ func (ctl *Controller) handleWrite(c *gin.Context) {
 	// Short circuit, if we are not the leader right now, we return
 	// a redirect to the current presumptive leader
 	if ctl.Node.State != mgmt.Leader {
-		c.String(http.StatusTemporaryRedirect, "")
-		c.Header("Location", fmt.Sprintf("http://%s/db/%s", ctl.Node.RedirectLeader(), key))
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://%s/db/%s", ctl.Node.RedirectLeader(), key))
 		return
 	}
 
@@ -143,6 +142,13 @@ type DeleteResponse struct {
 func (ctl *Controller) handleDelete(c *gin.Context) {
 	// todo: add redirect if not leader, use "Location:" header
 	key := c.Param("key")
+
+	// Short circuit, if we are not the leader right now, we return
+	// a redirect to the current presumptive leader
+	if ctl.Node.State != mgmt.Leader {
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://%s/db/%s", ctl.Node.RedirectLeader(), key))
+		return
+	}
 
 	if err := ctl.Node.Delete(key); err != nil {
 		c.String(http.StatusInternalServerError, err.Error())

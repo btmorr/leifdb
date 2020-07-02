@@ -176,3 +176,25 @@ func TestDelete(t *testing.T) {
 		t.Errorf("Incorrect response: %+v", data4)
 	}
 }
+
+func TestDeleteRedirect(t *testing.T) {
+	router, node := setupServer(t)
+
+	// Change our node so we become a follower
+	node.State = mgmt.Follower
+	node.SetTerm(node.Term + 1, "localhost:8081")
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/db/stuff", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTemporaryRedirect {
+		t.Errorf("Expected a temporary (307) redirect but got: %d\n", w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	expected := "http://localhost:8081/db/stuff"
+	if location != expected {
+		t.Errorf("Expected to be redirected to %s but got %s\n", expected, location)
+	}
+}
