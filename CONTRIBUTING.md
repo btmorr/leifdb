@@ -61,3 +61,4 @@ The version number is currently determined by a variable in "version.sh". The `m
 ## Contributors
 
 [Toma Morris](https://github.com/btmorr)
+[Suhail Patel](https://github.com/suhailpatel)
