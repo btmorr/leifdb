@@ -89,6 +89,33 @@ func TestReadAfterWrite(t *testing.T) {
 	}
 }
 
+func TestWriteRedirect(t *testing.T) {
+	router, node := setupServer(t)
+
+	// Change our node so we become a follower
+	node.State = mgmt.Follower
+	node.SetTerm(node.Term + 1, "localhost:8081")
+
+	v := "testy"
+	body1 := WriteRequest{Value: v}
+	b1, _ := json.Marshal(body1)
+	br1 := bytes.NewReader(b1)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/db/stuff", br1)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTemporaryRedirect {
+		t.Errorf("Expected a temporary (307) redirect but got: %d\n", w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	expected := "http://localhost:8081/db/stuff"
+	if location != expected {
+		t.Errorf("Expected to be redirected to %s but got %s\n", expected, location)
+	}
+}
+
 func TestDelete(t *testing.T) {
 	router, _ := setupServer(t)
 

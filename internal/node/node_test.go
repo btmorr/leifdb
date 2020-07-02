@@ -319,7 +319,7 @@ func TestCommitLogs(t *testing.T) {
 				"Hermione": "present"}}}
 
 	n := setupNode(t)
-	n.setTerm(currentTerm, currentLead)
+	n.SetTerm(currentTerm, currentLead)
 
 	for _, tc := range testCases {
 		n.HandleAppend(tc.Request)
@@ -337,7 +337,7 @@ func TestUpdateTermViaAppend(t *testing.T) {
 
 	startTerm := int64(3)
 	otherNodeId := "localhost:8181"
-	n.setTerm(startTerm, otherNodeId)
+	n.SetTerm(startTerm, otherNodeId)
 
 	newTerm := startTerm + 1
 	req := &raft.AppendRequest{
