@@ -103,11 +103,17 @@ type WriteResponse struct {
 // @Failure 400 {string} string "Error message"
 // @Router /db/{key} [put]
 func (ctl *Controller) handleWrite(c *gin.Context) {
-	// todo: add redirect if not leader, use "Location:" header
 	key := c.Param("key")
 	var body WriteRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Short circuit, if we are not the leader right now, we return
+	// a redirect to the current presumptive leader
+	if ctl.Node.State != mgmt.Leader {
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://%s/db/%s", ctl.Node.RedirectLeader(), key))
 		return
 	}
 
@@ -136,6 +142,13 @@ type DeleteResponse struct {
 func (ctl *Controller) handleDelete(c *gin.Context) {
 	// todo: add redirect if not leader, use "Location:" header
 	key := c.Param("key")
+
+	// Short circuit, if we are not the leader right now, we return
+	// a redirect to the current presumptive leader
+	if ctl.Node.State != mgmt.Leader {
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://%s/db/%s", ctl.Node.RedirectLeader(), key))
+		return
+	}
 
 	if err := ctl.Node.Delete(key); err != nil {
 		c.String(http.StatusInternalServerError, err.Error())

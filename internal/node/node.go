@@ -119,6 +119,12 @@ type Node struct {
 // any request that changes these values must be written to disk before
 // responding to the request.
 
+// RedirectLeader provides the leader which we want to redirect requests to if
+// we are not the leader at present
+func (n *Node) RedirectLeader() string {
+	return n.votedFor
+}
+
 // WriteTerm persists the node's most recent term and vote
 func WriteTerm(filename string, termRecord *raft.TermRecord) error {
 	out, err := proto.Marshal(termRecord)
@@ -151,8 +157,8 @@ func ReadTerm(filename string) *raft.TermRecord {
 	return record
 }
 
-// setTerm records term and vote in non-volatile state
-func (n *Node) setTerm(newTerm int64, votedFor string) error {
+// SetTerm records term and vote in non-volatile state
+func (n *Node) SetTerm(newTerm int64, votedFor string) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
 	vote := &raft.TermRecord{
@@ -302,7 +308,7 @@ func (n *Node) requestVote(host string) (*raft.VoteReply, error) {
 // starts another election (repeat until a leader is elected).
 func (n *Node) DoElection() bool {
 	log.Trace().Msg("Starting Election")
-	n.setTerm(n.Term+1, n.NodeId)
+	n.SetTerm(n.Term+1, n.NodeId)
 
 	numNodes := len(n.otherNodes) + 1
 	majority := (numNodes / 2) + 1
@@ -351,7 +357,7 @@ func (n *Node) DoElection() bool {
 				Int64("max response term", maxTermSeen).
 				Str("other node", maxTermSeenSource).
 				Msg("Updating term to max seen")
-			n.setTerm(maxTermSeen, maxTermSeenSource)
+			n.SetTerm(maxTermSeen, maxTermSeenSource)
 		}
 	} else {
 		voteLog.
@@ -619,7 +625,7 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 		vote = false
 		msg = "Expired term vote received"
 		if n.State == mgmt.Leader {
-			n.setTerm(n.Term+1, n.votedFor)
+			n.SetTerm(n.Term+1, n.votedFor)
 			msg = msg + ", incrementing term"
 		}
 	} else if !n.CheckForeignNode(req.CandidateId, n.otherNodes) {
@@ -629,7 +635,7 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 		msg = "Voting yay"
 		vote = true
 		n.resetElectionTimer()
-		n.setTerm(req.Term, req.CandidateId)
+		n.SetTerm(req.Term, req.CandidateId)
 	}
 	log.Info().
 		Int64("Term", n.Term).
@@ -658,6 +664,7 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 	}
 	return success
 }
+
 
 // If an existing entry conflicts with a new one (same idx diff term),
 // reconcileLogs deletes the existing entry and any that follow
@@ -765,7 +772,7 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 				Int64("newTerm", req.Term).
 				Str("votedFor", req.LeaderId).
 				Msg("Got more recent append, updating term record")
-			n.setTerm(req.Term, req.LeaderId)
+			n.SetTerm(req.Term, req.LeaderId)
 		}
 		// reset the election timer on append from a valid leader (even if
 		// not matched)--this duplicates the reset in `validateAppend`, in order to
