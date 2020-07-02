@@ -79,11 +79,12 @@ func (f *ForeignNode) Close() {
 
 // NodeConfig contains configurable properties for a node
 type NodeConfig struct {
-	Id       string
-	DataDir  string
-	TermFile string
-	LogFile  string
-	NodeIds  []string
+	Id         string
+	ClientAddr string
+	DataDir    string
+	TermFile   string
+	LogFile    string
+	NodeIds    []string
 }
 
 // ForeignNodeChecker functions are used to determine if a request comes from
@@ -100,10 +101,10 @@ type ForeignNodeChecker func(string, map[string]*ForeignNode) bool
 // from a Follower w.r.t. incoming messages, so the node will remain in the
 // Follower state while an election is in progress)
 type Node struct {
-	NodeId           string
+	RaftNode         *raft.Node
 	State            mgmt.Role
 	Term             int64
-	votedFor         string
+	votedFor         *raft.Node
 	Reset            chan bool
 	otherNodes       map[string]*ForeignNode
 	CheckForeignNode ForeignNodeChecker
@@ -122,7 +123,10 @@ type Node struct {
 // RedirectLeader provides the leader which we want to redirect requests to if
 // we are not the leader at present
 func (n *Node) RedirectLeader() string {
-	return n.votedFor
+	if n.votedFor == nil {
+		return ""
+	}
+	return n.votedFor.ClientAddr
 }
 
 // WriteTerm persists the node's most recent term and vote
@@ -146,7 +150,7 @@ func WriteTerm(filename string, termRecord *raft.TermRecord) error {
 // ReadTerm attempts to unmarshal and return a TermRecord from the specified
 // file, and if unable to do so returns an initialized TermRecord
 func ReadTerm(filename string) *raft.TermRecord {
-	record := &raft.TermRecord{Term: 0, VotedFor: ""}
+	record := &raft.TermRecord{Term: 0, VotedFor: nil}
 	_, err := os.Stat(filename)
 	if err == nil {
 		termFile, _ := ioutil.ReadFile(filename)
@@ -158,7 +162,7 @@ func ReadTerm(filename string) *raft.TermRecord {
 }
 
 // SetTerm records term and vote in non-volatile state
-func (n *Node) SetTerm(newTerm int64, votedFor string) error {
+func (n *Node) SetTerm(newTerm int64, votedFor *raft.Node) error {
 	n.Term = newTerm
 	n.votedFor = votedFor
 	vote := &raft.TermRecord{
@@ -286,7 +290,7 @@ func (n *Node) requestVote(host string) (*raft.VoteReply, error) {
 
 	voteRequest := &raft.VoteRequest{
 		Term:         n.Term,
-		CandidateId:  n.NodeId,
+		Candidate:    n.RaftNode,
 		LastLogIndex: 0,
 		LastLogTerm:  0}
 
@@ -308,7 +312,7 @@ func (n *Node) requestVote(host string) (*raft.VoteReply, error) {
 // starts another election (repeat until a leader is elected).
 func (n *Node) DoElection() bool {
 	log.Trace().Msg("Starting Election")
-	n.SetTerm(n.Term+1, n.NodeId)
+	n.SetTerm(n.Term+1, n.RaftNode)
 
 	numNodes := len(n.otherNodes) + 1
 	majority := (numNodes / 2) + 1
@@ -338,7 +342,7 @@ func (n *Node) DoElection() bool {
 		} else {
 			if vote.Term > maxTermSeen {
 				maxTermSeen = vote.Term
-				maxTermSeenSource = k
+				maxTermSeenSource = vote.Node
 			}
 		}
 	}
@@ -355,7 +359,7 @@ func (n *Node) DoElection() bool {
 		if maxTermSeen > n.Term {
 			log.Info().
 				Int64("max response term", maxTermSeen).
-				Str("other node", maxTermSeenSource).
+				Str("other node", maxTermSeenSource.Id).
 				Msg("Updating term to max seen")
 			n.SetTerm(maxTermSeen, maxTermSeenSource)
 		}
@@ -457,7 +461,7 @@ func (n *Node) requestAppend(host string, term int64) error {
 
 	req := &raft.AppendRequest{
 		Term:         term,
-		LeaderId:     n.NodeId,
+		Leader:       n.RaftNode,
 		PrevLogIndex: prevLogIndex,
 		PrevLogTerm:  prevLogTerm,
 		Entries:      newEntries,
@@ -553,15 +557,16 @@ func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 }
 
 // NewNodeConfig creates a config for a Node
-func NewNodeConfig(dataDir string, addr string, nodeIds []string) NodeConfig {
+func NewNodeConfig(dataDir string, addr, clientAddr string, nodeIds []string) NodeConfig {
 	// todo: check dataDir. if it is empty, initialize Node with default
 	// values for non-volatile state. Otherwise, read values.
 	return NodeConfig{
-		Id:       addr,
-		DataDir:  dataDir,
-		TermFile: filepath.Join(dataDir, "term"),
-		LogFile:  filepath.Join(dataDir, "raftlog"),
-		NodeIds:  nodeIds}
+		Id:         addr,
+		ClientAddr: clientAddr,
+		DataDir:    dataDir,
+		TermFile:   filepath.Join(dataDir, "term"),
+		LogFile:    filepath.Join(dataDir, "raftlog"),
+		NodeIds:    nodeIds}
 }
 
 // checkForeignNode verifies that a node is a known member of the cluster (this
@@ -581,14 +586,22 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 	resetChannel := make(chan bool)
 	// haltChannel := make(chan bool)
 
+	votedForId := "<undetermined>"
+	if termRecord.VotedFor != nil {
+		votedForId = termRecord.VotedFor.Id
+	}
+
 	log.Info().
 		Int64("Term", termRecord.Term).
-		Str("Vote", termRecord.VotedFor).
+		Str("Vote", votedForId).
 		Int("nLogs", len(logStore.Entries)).
 		Msg("On load")
 
 	n := Node{
-		NodeId:           config.Id,
+		RaftNode: &raft.Node{
+			Id:         config.Id,
+			ClientAddr: config.ClientAddr,
+		},
 		State:            mgmt.Follower,
 		Term:             termRecord.Term,
 		votedFor:         termRecord.VotedFor,
@@ -616,7 +629,7 @@ func (n *Node) AddForeignNode(addr string) {
 
 // HandleVote responds to vote requests from candidate nodes
 func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
-	log.Info().Msgf("%s proposed term: %d", req.CandidateId, req.Term)
+	log.Info().Msgf("%s proposed term: %d", req.Candidate.Id, req.Term)
 	var vote bool
 	var msg string
 	// todo: check candidate's log details
@@ -628,14 +641,14 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 			n.SetTerm(n.Term+1, n.votedFor)
 			msg = msg + ", incrementing term"
 		}
-	} else if !n.CheckForeignNode(req.CandidateId, n.otherNodes) {
+	} else if !n.CheckForeignNode(req.Candidate.Id, n.otherNodes) {
 		vote = false
-		msg = "Unknown foreign node: " + req.CandidateId
+		msg = "Unknown foreign node: " + req.Candidate.Id
 	} else {
 		msg = "Voting yay"
 		vote = true
 		n.resetElectionTimer()
-		n.SetTerm(req.Term, req.CandidateId)
+		n.SetTerm(req.Term, req.Candidate)
 	}
 	log.Info().
 		Int64("Term", n.Term).
@@ -651,11 +664,11 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 	// reply false if req term < current term
 	if term < n.Term {
 		success = false
-	} else if term == n.Term && leaderId != n.votedFor {
+	} else if term == n.Term && leaderId != n.votedFor.Id {
 		log.Error().
 			Int64("term", n.Term).
 			Str("got", leaderId).
-			Str("expected", n.votedFor).
+			Str("expected", n.votedFor.Id).
 			Msgf("Append request leader mismatch")
 		success = false
 	}
@@ -664,7 +677,6 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 	}
 	return success
 }
-
 
 // If an existing entry conflicts with a new one (same idx diff term),
 // reconcileLogs deletes the existing entry and any that follow
@@ -695,7 +707,7 @@ func reconcileLogs(
 	// append any entries not already in log
 	offset := int64(len(logStore.Entries)-1) - body.PrevLogIndex
 	newLogs := body.Entries[offset:]
-	log.Info().Msgf("Appending %d entries from %s", len(newLogs), body.LeaderId)
+	log.Info().Msgf("Appending %d entries from %s", len(newLogs), body.Leader.Id)
 	return &raft.LogStore{Entries: append(logStore.Entries, newLogs...)}
 }
 
@@ -747,7 +759,7 @@ func (n *Node) checkPrevious(prevIndex int64, prevTerm int64) bool {
 func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 	var success bool
 
-	valid := n.validateAppend(req.Term, req.LeaderId)
+	valid := n.validateAppend(req.Term, req.Leader.Id)
 	matched := n.checkPrevious(req.PrevLogIndex, req.PrevLogTerm)
 	if !valid {
 		// Invalid request
@@ -770,9 +782,9 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 		if req.Term > n.Term {
 			log.Info().
 				Int64("newTerm", req.Term).
-				Str("votedFor", req.LeaderId).
+				Str("votedFor", req.Leader.Id).
 				Msg("Got more recent append, updating term record")
-			n.SetTerm(req.Term, req.LeaderId)
+			n.SetTerm(req.Term, req.Leader)
 		}
 		// reset the election timer on append from a valid leader (even if
 		// not matched)--this duplicates the reset in `validateAppend`, in order to

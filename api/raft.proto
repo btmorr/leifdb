@@ -24,6 +24,7 @@ message VoteRequest {
 message VoteReply {
 	int64 term = 1;
 	bool voteGranted = 2;
+	Node node = 3;
 }
 
 message AppendRequest {
@@ -59,5 +60,5 @@ message LogStore {
 
 message TermRecord {
 	int64 term = 1;
-	string votedFor = 2;
+	Node votedFor = 2;
 }

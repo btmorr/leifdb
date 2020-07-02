@@ -113,6 +113,13 @@ func (ctl *Controller) handleWrite(c *gin.Context) {
 	// Short circuit, if we are not the leader right now, we return
 	// a redirect to the current presumptive leader
 	if ctl.Node.State != mgmt.Leader {
+		// We could be in a state where we don't have a leader elected yet to
+		// redirect to, at this point this server can't do much
+		if ctl.Node.RedirectLeader() == "" {
+			c.String(http.StatusInternalServerError, node.ErrNotLeaderRecv.Error())
+			return
+		}
+
 		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://%s/db/%s", ctl.Node.RedirectLeader(), key))
 		return
 	}
@@ -146,6 +153,13 @@ func (ctl *Controller) handleDelete(c *gin.Context) {
 	// Short circuit, if we are not the leader right now, we return
 	// a redirect to the current presumptive leader
 	if ctl.Node.State != mgmt.Leader {
+		// We could be in a state where we don't have a leader elected yet to
+		// redirect to, at this point this server can't do much
+		if ctl.Node.RedirectLeader() == "" {
+			c.String(http.StatusInternalServerError, node.ErrNotLeaderRecv.Error())
+			return
+		}
+
 		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://%s/db/%s", ctl.Node.RedirectLeader(), key))
 		return
 	}
@@ -196,7 +210,7 @@ func main() {
 	fmt.Printf("Configuration:\n%+v\n\n", *cfg)
 
 	store := database.NewDatabase()
-	config := node.NewNodeConfig(cfg.DataDir, cfg.RaftAddr, cfg.NodeIds)
+	config := node.NewNodeConfig(cfg.DataDir, cfg.RaftAddr, cfg.ClientAddr, cfg.NodeIds)
 	n, err := node.NewNode(config, store)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize node")
