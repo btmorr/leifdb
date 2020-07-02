@@ -308,6 +308,13 @@ func TestVote(t *testing.T) {
 				tc.expectTerm,
 				reply.Term)
 		}
+		// Ensure node has been propagated
+		if reply.Node != n.RaftNode {
+			t.Errorf("[%s] Expected node to be a %v but it was %v",
+				tc.name,
+				n.RaftNode,
+				reply.Node)
+		}
 		// Ensure node logs are as expected
 		if n.State != tc.expectNodeState {
 			t.Errorf("[%s] Expected node to be a %v but it is a %v",

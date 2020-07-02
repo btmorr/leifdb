@@ -654,7 +654,10 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 		Int64("Term", n.Term).
 		Bool("Granted", vote).
 		Msg(msg)
-	return &raft.VoteReply{Term: n.Term, VoteGranted: vote}
+	return &raft.VoteReply{
+		Term:        n.Term,
+		VoteGranted: vote,
+		Node:        n.RaftNode}
 }
 
 // validateAppend performs all checks for valid append request
