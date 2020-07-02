@@ -40,10 +40,10 @@ This will clean, build, and test the code (make tasks may not currently work on 
 make run
 ```
 
-To provide flags (see [Configuration](#configuration)) or other options:
+To configure options (see [Configuration](#configuration)):
 
 ```
-make run run_opts='-raftport 16991'
+env LEIFDB_RAFT_PORT=16991 make run
 ```
 
 To build and run the app manually on Linux/Unix:
@@ -66,12 +66,6 @@ To manually run the test suite:
 ```
 go test -tags=unit ./...
 go test -tags=mgmttest ./...
-```
-
-After building the binary, to find out what command line parameters are available:
-
-```
-./leifdb -h
 ```
 
 To run the server with default parameters, do:
@@ -136,95 +130,53 @@ Messages used for managing Raft state use protobuf. See test cases for examples 
 
 ### HTTP interface
 
-The HTTP interface is used for client interactions with the database. It can be specified using the `-httpport` flag with an integer value. If no value is provided, port 8080 is used.
+The HTTP interface is used for client interactions with the database. It can be specified using the `LEIFDB_HTTP_PORT` environment variable with an integer value. If no value is provided, port 8080 is used.
 
 ### gPRC interface
 
-The gRPC interface is used for interactions between members of the Raft cluster. It can be specified using the `-raftport` flag with an integer value. If no value is provided, port 16990 is used.
+The gRPC interface is used for interactions between members of the Raft cluster. It can be specified using the `LEIFDB_RAFT_PORT` environment variable with an integer value. If no value is provided, port 16990 is used.
 
 ### Data directory
 
-The persistent data directory is used for storing configuration files and non-volatile server state, and can be specified using the `-data` flag with a path. The path may point to a non-existent location, but cannot exactly match an existing file (an existing directory is fine). If no value is provided, "$HOME/.leifdb/<addr_hash>" is used, where "<addr_hash>" is a non-cryptographic hash of the gRPC interface for the server (such that configuration is consistent for a server as long as it is deployed with the same IP address and same port specified by `-raftport`)
+The persistent data directory is used for storing configuration files and non-volatile server state, and can be specified using the `LEIFDB_DATA_DIR` environment variable with a path. The path may point to a non-existent location, but cannot exactly match an existing file (an existing directory is fine). If no value is provided, "$HOME/.leifdb/<addr_hash>" is used, where "<addr_hash>" is a non-cryptographic hash of the gRPC interface for the server (such that configuration is consistent for a server as long as it is deployed with the same hostname or IP address and same port specified by `LEIFDB_DATA_DIR`)
 
 ### Cluster configuration
 
-In order to interact with other members of a raft cluster, each node must know the addresses for other members. Currently, this is not determined dynamically. In order to create a multi-node deployment, there must be a file in the [persistent data directory](#data-directory) named "config.<ext>", where "<ext>" is one of "json", "yaml", "toml", or other format supported by [spf13/viper]. For instructions on how to write the config file, see the [example config file]. If you want to use a format other than TOML, the [Viper docs on nested keys] demonstrate use with JSON, and other sections include examples of yaml and other formats.
+In order to interact with other members of a raft cluster, each node must know the addresses for other members. Currently, this is not determined dynamically. In order to create a multi-node deployment, there must be two environment variables set:
 
-This config in TOML:
+- `LEIFDB_MODE`: must be "multi" (default is "single")
+- `LEIFDB_MEMBER_NODES`: must be a comma-separated list of addresses for other nodes, such as "10.10.0.2:16990,10.10.0.3:16990,10.10.0.4:16990"
 
-```
-[configuration]
-mode = "multi"
-members = ["server1", "server2", "server3"]
-
-[server1]
-host = "localhost"
-port = 16990
-
-[server2]
-host = "localhost"
-port = 16991
-
-[server3]
-host = "localhost"
-port = 16992
-```
-
-is equivalent to this in JSON:
+To run a cluster on one machine, make 3 directories named "/data/a", "/data/b", and "/data/c". Replace "10.10.0.x" with either "localhost" or your computer's preferred IP (can get it from `ifconfig` on Unix/Linux or `ipconfig` on Windows, or from an error message by running a server with the config file as written--better methods forthcoming). Then open three terminal windows and execute these in each:
 
 ```
-{
-    "configuration": {
-        "mode": "multi",
-        "members": ["server1", "server2", "server3"],
-        "server1": {
-            "host": "localhost",
-            "port": 16990
-        },
-        "server2": {
-            "host": "localhost",
-            "port": 16991
-        },
-        "server3": {
-            "host": "localhost",
-            "port": 16992
-        }
-    }
-}
-```
-
-or this in YAML:
-
-```
-configuration:
-    mode: multi
-    members:
-      - server1
-      - server2
-      - server3
-    server1:
-        host: localhost
-        port: 16990
-    server2:
-        host: localhost
-        port: 16991
-    server3:
-        host: localhost
-        port: 16992
-```
-
-To run a cluster on one machine, make 3 directories, and put a copy of the configuration above into each directory (using "/data/a", "/data/b", and "/data/c" for examples below--replace with your chosen directories). Replace "localhost" with your computer's preferred IP (can get it from `ifconfig` on Unix/Linux or `ipconfig` on Windows, or from an error message by running a server with the config file as written--better methods forthcoming). Then open three terminal windows and execute these in each:
-
-```
-./leifdb -raftport 16990 -httpport 8080 -data /data/a
+env LEIFDB_DATA_DIR=/data/a \
+  LEIFDB_MODE=multi \
+  LEIFDB_MEMBER_NODES="localhost:16990,localhost:16991,localhost:16992" \
+  LEIFDB_HOST=localhost \
+  LEIFDB_HTTP_PORT=8080 \
+  LEIFDB_RAFT_PORT=16990 \
+  ./leifdb
 ```
 
 ```
-./leifdb -raftport 16991 -httpport 8081 -data /data/b
+env LEIFDB_DATA_DIR=/data/b \
+  LEIFDB_MODE=multi \
+  LEIFDB_MEMBER_NODES="localhost:16990,localhost:16991,localhost:16992" \
+  LEIFDB_HOST=localhost \
+  LEIFDB_HTTP_PORT=8081 \
+  LEIFDB_RAFT_PORT=16991 \
+  ./leifdb
 ```
 
 ```
-./leifdb -raftport 16992 -httpport 8082 -data /data/c
+env LEIFDB_DATA_DIR=/data/c \
+  LEIFDB_MODE=multi \
+  LEIFDB_MEMBER_NODES="localhost:16990,localhost:16991,localhost:16992" \
+  LEIFDB_HOST=localhost \
+  LEIFDB_HTTP_PORT=8082 \
+  LEIFDB_RAFT_PORT=16992 \
+  ./leifdb
 ```
 
 (keep track of which window is which, since you'll need to figure out what the ports are for the one that becomes the leader, but you generally can't control which one it will be)
@@ -246,7 +198,7 @@ Follower nodes will be streaming messages like:
 2020-06-04T07:40:16-04:00 DBG Received append request: term:105 leaderId:"192.168.1.21:16991" prevLogIndex:1 prevLogTerm:97 leaderCommit:1
 ```
 
-Determine which ports correspond to the leader (let's say it's the one with an HTTP service bound to port 8080), then you can issue writes to the leader node, followed by reads to any node. See [Database requests](#database-requests) for writing read/write requests.
+Determine which ports correspond to the leader (let's say it's the one with an HTTP service bound to port 8080), then you can issue writes to the leader node, followed by reads to any node. See [Database requests](#database-requests) for writing read/write requests. [Note that this is not a final restriction--once redirect responses are implemented, the servers will handle redirecting writes to the leader and the user will be able to initiate a write with any node]
 
 ## Todo
 
@@ -293,8 +245,6 @@ Aside from the Raft papers themselves, here are some related resources:
 
 [swaggo/swag]: https://github.com/swaggo/swag/
 [gin-gonic/gin]: https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview
-[spf13/viper]: https://github.com/spf13/viper
-[Viper docs on nested keys]: https://github.com/spf13/viper#accessing-nested-keys
 [preflight requests]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
 [Windows Subsystem for Linux]: https://docs.microsoft.com/en-us/windows/wsl/about
