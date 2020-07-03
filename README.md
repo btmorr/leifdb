@@ -14,18 +14,6 @@ Contributions are welcome! Check out the [Contributing Guide] for more info on h
 
 This project requires Go 1.14.x and the [swaggo/swag] cli tool, and modifying some elements requires protobuf. If you do not have these installed, see the instructions in the [Contributing Guide].
 
-Install the `swag` cli:
-
-```
-make install
-```
-
-or manually:
-
-```
-go get -u github.com/swaggo/swag/cmd/swag
-```
-
 ## Build and run
 
 The simplest way to build and test the application is to enter:
