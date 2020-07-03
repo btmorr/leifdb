@@ -46,5 +46,4 @@ protobuf:
 .PHONY: container
 container:
 	env GOOS=linux GOARCH=amd64 go build -o build/leifdb
-	cp config/default_config.toml build/config.toml
 	docker build -t leifdb:0 .
