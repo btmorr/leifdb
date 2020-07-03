@@ -21,6 +21,7 @@ benchmark:
 .PHONY: clean
 clean:
 	go clean
+	rm -rf ./build || true
 	rm ./$(binary_prefix)* || true
 
 .PHONY: install
@@ -42,3 +43,8 @@ protobuf:
 	mkdir -p ./internal/raft
 	cp ./github.com/btmorr/leifdb/internal/raft/* ./internal/raft/
 	rm -rf ./github.com
+
+.PHONY: container
+container:
+	env GOOS=linux GOARCH=amd64 go build -o build/leifdb
+	docker build -t leifdb:0 .
