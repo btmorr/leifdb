@@ -1,5 +1,7 @@
 version = $(shell bash ./version.sh)
-run_opts ?=
+
+# Note: be careful with values for `binary_prefix`, because of how it is used
+# in the "clean" task--it will delete any files with this prefix
 binary_prefix = leifdb-
 
 .PHONY: test
@@ -23,7 +25,9 @@ clean:
 
 .PHONY: install
 install:
-	go get -u github.com/swaggo/swag/cmd/swag
+	go install github.com/swaggo/swag/cmd/swag
+	go install google.golang.org/protobuf/cmd/protoc-gen-go
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
 
 .PHONY: app
 app: clean
@@ -38,7 +42,3 @@ protobuf:
 	mkdir -p ./internal/raft
 	cp ./github.com/btmorr/leifdb/internal/raft/* ./internal/raft/
 	rm -rf ./github.com
-
-.PHONY: run
-run: leifdb-$(version)
-	./leifdb-$(version) $(run_opts)

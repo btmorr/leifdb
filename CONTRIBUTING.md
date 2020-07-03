@@ -39,6 +39,12 @@ go install google.golang.org/protobuf/cmd/protoc-gen-go
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
 ```
 
+If you have trouble finding the binary, on a Unix or Linux system you can try:
+
+```
+find $(go env GOPATH) -name protoc-gen-go
+```
+
 Additionally this repo includes a Makefile with tasks for common workflows. Your OS may already have [make](https://www.gnu.org/software/make/) installed (you can check on a Linux/Unix system using `which make` or on Windows using `Get-Command make` in PowerShell). If you don't have it installed, you can get it via a package manager (ex: `yum` for Centos, `apt` for Debian/Ubuntu, [`brew`](https://brew.sh) for MacOS, or [Chocolatey](https://chocolatey.org) for Windows).
 
 Especially on Windows, there are many ways of installing make (such as with [Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/about), getting a binary from the [GNU Make for Windows](http://gnuwin32.sourceforge.net/packages/make.htm) page, etc.--I'm not going to cover them all here, but you can use what works best for you.
@@ -57,9 +63,9 @@ The version number is currently determined by a variable in "version.sh". The `m
 
 ## Maintainers
 
-[Toma Morris](https://github.com/btmorr)
+- [Toma Morris](https://github.com/btmorr)
 
 ## Contributors
 
-[Toma Morris](https://github.com/btmorr)
-[Suhail Patel](https://github.com/suhailpatel)
+- [Toma Morris](https://github.com/btmorr)
+- [Suhail Patel](https://github.com/suhailpatel)
