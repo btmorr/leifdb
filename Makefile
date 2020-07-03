@@ -1,5 +1,7 @@
 version = $(shell bash ./version.sh)
-run_opts ?=
+
+# Note: be careful with values for `binary_prefix`, because of how it is used
+# in the "clean" task--it will delete any files with this prefix
 binary_prefix = leifdb-
 
 .PHONY: test
@@ -24,7 +26,9 @@ clean:
 
 .PHONY: install
 install:
-	go get -u github.com/swaggo/swag/cmd/swag
+	go install github.com/swaggo/swag/cmd/swag
+	go install google.golang.org/protobuf/cmd/protoc-gen-go
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
 
 .PHONY: app
 app: clean
@@ -40,9 +44,6 @@ protobuf:
 	cp ./github.com/btmorr/leifdb/internal/raft/* ./internal/raft/
 	rm -rf ./github.com
 
-# Note this is not working completely correctly now, as the default config file
-# does not work out of the box--revisit after consolidating configration and
-# making it more amenable to containerization
 .PHONY: container
 container:
 	env GOOS=linux GOARCH=amd64 go build -o build/leifdb
