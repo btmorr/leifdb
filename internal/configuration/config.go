@@ -180,7 +180,7 @@ func BuildServerConfig() *ServerConfig {
 		panic(err)
 	}
 
-	clientPort := os.Getenv("LEIFDB_CLIENT_PORT")
+	clientPort := os.Getenv("LEIFDB_HTTP_PORT")
 	if clientPort == "" {
 		clientPort = "8080"
 	}
