@@ -47,8 +47,6 @@ go clean
 go build -tags=unit,mgmttest -o leifdb.exe
 ```
 
-Responses to client endpoints are string-formatted.
-
 To manually run the test suite:
 
 ```
@@ -135,10 +133,10 @@ In order to interact with other members of a raft cluster, each node must know t
 - `LEIFDB_MODE`: must be "multi" (default is "single")
 - `LEIFDB_MEMBER_NODES`: must be a comma-separated list of addresses for other nodes, such as "10.10.0.2:16990,10.10.0.3:16990,10.10.0.4:16990"
 
-To run a cluster on one machine, make 3 directories named "/data/a", "/data/b", and "/data/c". Replace "10.10.0.x" with either "localhost" or your computer's preferred IP (can get it from `ifconfig` on Unix/Linux or `ipconfig` on Windows, or from an error message by running a server with the config file as written--better methods forthcoming). Then open three terminal windows and execute these in each:
+To run a cluster on one machine, make 3 directories named "~/testdata/a", "~/testdata/b", and "~/testdata/c". Replace "10.10.0.x" with either "localhost" or your computer's preferred IP (can get it from `ifconfig` on Unix/Linux or `ipconfig` on Windows, or from an error message by running a server with the config file as written--better methods forthcoming). Then open three terminal windows and execute these in each:
 
 ```
-env LEIFDB_DATA_DIR=/data/a \
+env LEIFDB_DATA_DIR=~/testdata/a \
   LEIFDB_MODE=multi \
   LEIFDB_MEMBER_NODES="localhost:16990,localhost:16991,localhost:16992" \
   LEIFDB_HOST=localhost \
@@ -148,7 +146,7 @@ env LEIFDB_DATA_DIR=/data/a \
 ```
 
 ```
-env LEIFDB_DATA_DIR=/data/b \
+env LEIFDB_DATA_DIR=~/testdata/b \
   LEIFDB_MODE=multi \
   LEIFDB_MEMBER_NODES="localhost:16990,localhost:16991,localhost:16992" \
   LEIFDB_HOST=localhost \
@@ -158,7 +156,7 @@ env LEIFDB_DATA_DIR=/data/b \
 ```
 
 ```
-env LEIFDB_DATA_DIR=/data/c \
+env LEIFDB_DATA_DIR=~/testdata/c \
   LEIFDB_MODE=multi \
   LEIFDB_MEMBER_NODES="localhost:16990,localhost:16991,localhost:16992" \
   LEIFDB_HOST=localhost \
