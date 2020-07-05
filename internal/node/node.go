@@ -637,10 +637,6 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 		// Increment term, vote for same node as previous term (is this correct?)
 		vote = false
 		msg = "Expired term vote received"
-		if n.State == mgmt.Leader {
-			n.SetTerm(n.Term+1, n.votedFor)
-			msg = msg + ", incrementing term"
-		}
 	} else if !n.CheckForeignNode(req.Candidate.Id, n.otherNodes) {
 		vote = false
 		msg = "Unknown foreign node: " + req.Candidate.Id

@@ -3,6 +3,7 @@ version = $(shell bash ./version.sh)
 # Note: be careful with values for `binary_prefix`, because of how it is used
 # in the "clean" task--it will delete any files with this prefix
 binary_prefix = leifdb-
+tag ?= 0
 
 .PHONY: test
 test: app
@@ -47,4 +48,4 @@ protobuf:
 .PHONY: container
 container:
 	env GOOS=linux GOARCH=amd64 go build -o build/leifdb
-	docker build -t leifdb:0 .
+	docker build -t leifdb:$(tag) .

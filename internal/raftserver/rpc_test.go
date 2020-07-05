@@ -24,7 +24,7 @@ func checkMock(addr string, known map[string]*node.ForeignNode) bool {
 	return true
 }
 
-// setupServer configurs a Database and a Node, mocks cluster membership check,
+// setupServer configures a Database and a Node, mocks cluster membership check,
 // and creates a test directory that is cleaned up after each test
 func setupServer(t *testing.T) *node.Node {
 	addr := "localhost:16990"
@@ -271,7 +271,7 @@ func TestVote(t *testing.T) {
 				Candidate:    testRaftNode,
 				LastLogIndex: -1,
 				LastLogTerm:  0},
-			expectTerm:      2,
+			expectTerm:      1,
 			expectVote:      false,
 			expectNodeState: mgmt.Leader},
 		{
