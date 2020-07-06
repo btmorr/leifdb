@@ -7,11 +7,19 @@ import (
 	"os"
 	"testing"
 
+	"github.com/rs/zerolog"
+
 	db "github.com/btmorr/leifdb/internal/database"
+	"github.com/btmorr/leifdb/internal/mgmt"
 	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/btmorr/leifdb/internal/testutil"
 	"github.com/btmorr/leifdb/internal/util"
 )
+
+func init() {
+	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	// zerolog.SetGlobalLevel(zerolog.DebugLevel)
+}
 
 // checkForeignNodeMock is used to skip membership checks during test, so that
 // a Node will perform raft operations without a full multi-node config
@@ -107,6 +115,108 @@ func TestPersistence(t *testing.T) {
 	}
 
 	testutil.CompareLogs(t, "Node load", n.Log, logCache)
+}
+
+type VoteTestCase struct {
+	name       string
+	request    *raft.VoteRequest
+	expectTerm int64
+	expectVote bool
+}
+
+func TestVote(t *testing.T) {
+	n := setupNode(t)
+
+	// set up node as if it is Leader with two logs committed
+	n.State = mgmt.Leader
+	n.SetTerm(2, n.RaftNode)
+	n.Log = &raft.LogStore{
+		Entries: []*raft.LogRecord{
+			{
+				Term:   1,
+				Action: raft.LogRecord_SET,
+				Key:    "testing",
+				Value:  "[1, 2, 3]",
+			},
+			{
+				Term:   2,
+				Action: raft.LogRecord_SET,
+				Key:    "what'cha say?",
+				Value:  "ah said...",
+			},
+		},
+	}
+	n.commitIndex = 1
+
+	testRaftNode := &raft.Node{Id: "localhost:16999", ClientAddr: "localhost:8089"}
+
+	testCases := []VoteTestCase{
+		{
+			name: "Vote request expired term",
+			request: &raft.VoteRequest{
+				Term:         1,
+				Candidate:    testRaftNode,
+				LastLogIndex: 1,
+				LastLogTerm:  2},
+			expectTerm: 2,
+			expectVote: false},
+		{
+			name: "Vote request same term",
+			request: &raft.VoteRequest{
+				Term:         2,
+				Candidate:    testRaftNode,
+				LastLogIndex: 1,
+				LastLogTerm:  2},
+			expectTerm: 3,
+			expectVote: false},
+		{
+			name: "Vote request log behind",
+			request: &raft.VoteRequest{
+				Term:         4,
+				Candidate:    testRaftNode,
+				LastLogIndex: 0,
+				LastLogTerm:  1},
+			expectTerm: 3,
+			expectVote: false},
+		{
+			name: "Vote request log incorrect (shouldn't happen)",
+			request: &raft.VoteRequest{
+				Term:         4,
+				Candidate:    testRaftNode,
+				LastLogIndex: 1,
+				LastLogTerm:  1},
+			expectTerm: 3,
+			expectVote: false},
+		{
+			name: "Vote request valid, candidate equal",
+			request: &raft.VoteRequest{
+				Term:         4,
+				Candidate:    testRaftNode,
+				LastLogIndex: 1,
+				LastLogTerm:  2},
+			expectTerm: 4,
+			expectVote: true},
+		{
+			name: "Vote request valid, candidate ahead",
+			request: &raft.VoteRequest{
+				Term:         6,
+				Candidate:    testRaftNode,
+				LastLogIndex: 7,
+				LastLogTerm:  5},
+			expectTerm: 6,
+			expectVote: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		reply := n.HandleVote(tc.request)
+		if reply.Term != tc.expectTerm {
+			t.Errorf("[%s] Expected term %d but got %d\n", tc.name, tc.expectTerm, reply.Term)
+		}
+		if reply.VoteGranted != tc.expectVote {
+			t.Errorf("[%s] Expected vote %t but got %t\n", tc.name, tc.expectVote, reply.VoteGranted)
+		}
+	}
 }
 
 type ReconcileTestCase struct {
