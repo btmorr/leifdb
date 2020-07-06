@@ -55,10 +55,11 @@ type ForeignNode struct {
 
 // NewForeignNode constructs a ForeignNode from an address ("host:port")
 func NewForeignNode(address string) (*ForeignNode, error) {
-	conn, err := grpc.Dial(
+	ctx, _ := context.WithTimeout(context.Background(), time.Millisecond*100)
+	conn, err := grpc.DialContext(
+		ctx,
 		address,
-		grpc.WithInsecure(),
-		grpc.WithTimeout(time.Second))
+		grpc.WithInsecure())
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to connect to %s", address)
 		return nil, err

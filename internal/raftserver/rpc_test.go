@@ -6,11 +6,14 @@ import (
 	"context"
 	"io/ioutil"
 	"log"
+	"net"
 	"testing"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/rs/zerolog"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/test/bufconn"
 
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/mgmt"
@@ -329,5 +332,37 @@ func TestVote(t *testing.T) {
 				tc.expectNodeState,
 				n.State)
 		}
+	}
+}
+
+func TestServe(t *testing.T) {
+	n := setupServer(t)
+	lis := bufconn.Listen(1024 * 1024)
+	s := StartRaftServer(lis, n)
+	defer s.Stop()
+
+	bufDialer := func(c context.Context, s string) (net.Conn, error) {
+		return lis.Dial()
+	}
+
+	ctx := context.Background()
+	conn, err := grpc.DialContext(ctx, "bufnet", grpc.WithContextDialer(bufDialer), grpc.WithInsecure())
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	defer conn.Close()
+
+	client := raft.NewRaftClient(conn)
+	_, err = client.RequestVote(ctx, &raft.VoteRequest{
+		Term: 0,
+		Candidate: &raft.Node{
+			Id:         "localhost:12345",
+			ClientAddr: "localhost:8081",
+		},
+		LastLogIndex: 0,
+		LastLogTerm:  0,
+	})
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
 	}
 }

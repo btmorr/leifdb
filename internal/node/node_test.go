@@ -49,6 +49,14 @@ func setupNode(t *testing.T) *Node {
 	return n
 }
 
+func TestNewForeignNode(t *testing.T) {
+	fn, err := NewForeignNode("localhost:12345")
+	if err != nil {
+		t.Errorf("Connection failed with: %v\n", err)
+	}
+	fn.Close()
+}
+
 func TestPersistence(t *testing.T) {
 	addr := "localhost:8080"
 	clientAddr := "localhost:16990"
@@ -216,6 +224,11 @@ func TestVote(t *testing.T) {
 		if reply.VoteGranted != tc.expectVote {
 			t.Errorf("[%s] Expected vote %t but got %t\n", tc.name, tc.expectVote, reply.VoteGranted)
 		}
+	}
+	// After test cases, node should have voted for `testRaftNode` and redirect to it
+	redirectNode := n.RedirectLeader()
+	if redirectNode != testRaftNode.ClientAddr {
+		t.Errorf("Expected redirect to %s, but got %s\n", testRaftNode.ClientAddr, redirectNode)
 	}
 }
 
