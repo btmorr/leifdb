@@ -4,9 +4,9 @@
 [![License][license-badge]][license]
 [![Build Status][build-badge]][build]
 
-LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go, based on the [short Raft paper]. It has an [OpenAPIv2.0]-compatible HTTP interface for client interaction, and serves the schema for the client interface at the root HTTP endpoint to allow clients to discover and use endpoints programatically.
+LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go. It has an [OpenAPIv2.0]-compatible HTTP interface for client interaction, and serves the schema for the client interface at the root HTTP endpoint to allow clients to discover and use endpoints programatically.
 
-The aim of this project is to build a distributed, consistent, fault-tolerant database along the lines of [etcd], which backs [Kubernetes]; [Consul], which backs [Vault] and other HashiCorp tools; or [ZooKeeper], which backs most Hadoop-related projects. (etcd and Consul use Raft, ZooKeeper uses a similar algorithm called [Zab], and there are others that use other algorithms such as [Paxos])
+The aim of this project is to build a distributed, consistent, fault-tolerant database along the lines of [etcd], which backs [Kubernetes]; [Consul], which backs [Vault] and other HashiCorp tools; or [ZooKeeper], which backs most Hadoop-related projects (etcd and Consul use Raft, ZooKeeper uses a similar algorithm called [Zab], and there are others that use other algorithms such as [Paxos]).
 
 Contributions are welcome! Check out the [Contributing Guide] for more info on how to make feature requests, submit bug reports, or create pull requests.
 
@@ -22,16 +22,18 @@ The simplest way to build and test the application is to enter:
 make
 ```
 
-This will clean, build, and test the code (make tasks may not currently work on Windows without [Windows Subsystem for Linux]). To automatically run (after clean and build), use:
+This will clean, build, and test the code (make tasks may not currently work on Windows without [Windows Subsystem for Linux] or Git Bash terminal). 
+
+To run the database run this command, replacing "\<version>" with the current version number:
 
 ```
-make run
+./leifdb-<version>
 ```
 
-To configure options (see [Configuration](#configuration)):
+Use environment variables to configure options (for all options, see [Configuration](#configuration)):
 
 ```
-env LEIFDB_RAFT_PORT=16991 make run
+env LEIFDB_HTTP_PORT=8081 ./leifdb-<version>
 ```
 
 To build and run the app manually on Linux/Unix:
@@ -39,32 +41,17 @@ To build and run the app manually on Linux/Unix:
 ```
 go clean
 go build -tags=unit,mgmttest -o leifdb
+env LEIFDB_HTTP_PORT=8081 ./leifdb
 ```
 
-On Windows:
+On Windows PowerShell:
 ```
 go clean
 go build -tags=unit,mgmttest -o leifdb.exe
+$env:LEIFDB_HTTP_PORT="8081" ./leifdb.exe
 ```
 
-To manually run the test suite:
-
-```
-go test -tags=unit ./...
-go test -tags=mgmttest ./...
-```
-
-To run the server with default parameters, do:
-
-```
-./leifdb
-```
-
-Or on Windows:
-
-```
-./leifdb.exe
-```
+For other options, such as manually running the test suite, take a look at the commands in the [Makefile](./Makefile).
 
 ## UI
 
@@ -105,7 +92,6 @@ Vary: Access-Control-Request-Method
 Vary: Access-Control-Request-Headers
 Date: Fri, 05 Jun 2020 20:47:51 GMT
 Content-Length: 0
-
 ```
 
 ### Raft requests
@@ -165,9 +151,7 @@ env LEIFDB_DATA_DIR=~/testdata/c \
   ./leifdb
 ```
 
-(keep track of which window is which, since you'll need to figure out what the ports are for the one that becomes the leader, but you generally can't control which one it will be)
-
-The output will have a *lot* of chatter (unless you change the log level in the `init` function in "main.go"), but should reach a steady state where one of the nodes is the leader. The leader node will be logging a stream of messages like:
+The output will have quite a bit of chatter (unless you raise the log level in the `init` function in "main.go"), but should reach a steady state where one of the nodes is the leader. The leader node will be logging a stream of messages like:
 
 ```
 2020-06-04T07:40:16-04:00 DBG Number needed for append: 2
@@ -184,33 +168,21 @@ Follower nodes will be streaming messages like:
 2020-06-04T07:40:16-04:00 DBG Received append request: term:105 leaderId:"192.168.1.21:16991" prevLogIndex:1 prevLogTerm:97 leaderCommit:1
 ```
 
-Determine which ports correspond to the leader (let's say it's the one with an HTTP service bound to port 8080), then you can issue writes to the leader node, followed by reads to any node. See [Database requests](#database-requests) for writing read/write requests. [Note that this is not a final restriction--once redirect responses are implemented, the servers will handle redirecting writes to the leader and the user will be able to initiate a write with any node]
-
-## Todo
-
-Raft basics (everything from the [short Raft paper]):
-- add log comparison check to vote handler (election restriction)
-
-Raft complete (additional functionality in the [full Raft paper]):
-- log compaction
-- changes in cluster membership
-
-General application:
-- Add scripts for starting a cluster / changing membership (probably something to the tune of [Docker] + [Kubernetes] + [Terraform])
-- Performance benchmarking (see the "Measurement" section of [Paxos Made Live] for a couple of ways to set up benchmarks) (also, compare performance with differing levels of debug logging turned on)
+You can now issue read and write requests to any node (writes will be redirected to the leader--remember to use the `-L` flag if you are using curl). See [Database requests](#database-requests) for writing read/write requests. 
 
 ## Prior art
 
-Aside from the Raft papers themselves, here are some related resources:
+Aside from the Raft papers themselves ([short] and [extended], here are some related resources:
 - [The Secret Lives of Data]
 - [Eli Bendersky's blog post]
 - A [talk on Raft] from the [Consul] team
 - [Jay Kreps' article on Logs]
 - [Distributed systems for fun and profit]
+- The "Measurement" section of [Paxos Made Live] has a good discussion of performance benchmarking (also, compare performance with differing levels of debug logging turned on)
 
 [Raft]: https://raft.github.io/
-[short Raft paper]: https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf
-[full Raft paper]: https://raft.github.io/raft.pdf
+[short]: https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf
+[extended]: https://raft.github.io/raft.pdf
 [The Secret Lives of Data]: http://thesecretlivesofdata.com/raft/
 [Eli Bendersky's blog post]: https://eli.thegreenplace.net/2020/implementing-raft-part-0-introduction/
 [talk on Raft]: https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained/
@@ -224,7 +196,6 @@ Aside from the Raft papers themselves, here are some related resources:
 [Kubernetes]: https://kubernetes.io/
 [Consul]: https://www.consul.io/
 [Vault]: https://www.vaultproject.io/
-[Terraform]: https://www.terraform.io/
 [ZooKeeper]: https://zookeeper.apache.org/
 [Zab]: https://www.cs.cornell.edu/courses/cs6452/2012sp/papers/zab-ieee.pdf
 [Paxos]: http://research.microsoft.com/users/lamport/pubs/paxos-simple.pdf
