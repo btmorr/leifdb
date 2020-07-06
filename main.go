@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -244,7 +245,11 @@ func main() {
 
 	raftPortString := fmt.Sprintf(":%s", cfg.RaftPort)
 	clientPortString := fmt.Sprintf(":%s", cfg.ClientPort)
-	go raftserver.StartRaftServer(raftPortString, n)
+	lis, err := net.Listen("tcp", raftPortString)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Cluster interface failed to bind")
+	}
+	raftserver.StartRaftServer(lis, n)
 	router := buildRouter(n)
 	router.Run(clientPortString)
 }

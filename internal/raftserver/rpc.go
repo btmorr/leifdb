@@ -33,14 +33,13 @@ func (s *server) AppendLogs(
 
 // StartRaftServer constructs and starts a gRPC server for Raft protocol routes
 // Note: `port` must be in the form ":12345"
-func StartRaftServer(port string, n *node.Node) {
-	lis, err := net.Listen("tcp", port)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Cluster interface failed to bind")
-	}
+func StartRaftServer(lis net.Listener, n *node.Node) *grpc.Server {
 	s := grpc.NewServer()
 	raft.RegisterRaftServer(s, &server{Node: n})
-	if err := s.Serve(lis); err != nil {
-		log.Fatal().Err(err).Msg("Failed to serve")
-	}
+	go func() {
+		if err := s.Serve(lis); err != nil {
+			log.Fatal().Err(err).Msg("gRPC failed to serve")
+		}
+	}()
+	return s
 }
