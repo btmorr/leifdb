@@ -9,12 +9,13 @@ import (
 	"sync"
 	"time"
 
-	db "github.com/btmorr/leifdb/internal/database"
-	"github.com/btmorr/leifdb/internal/mgmt"
-	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/golang/protobuf/proto"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+
+	db "github.com/btmorr/leifdb/internal/database"
+	"github.com/btmorr/leifdb/internal/mgmt"
+	"github.com/btmorr/leifdb/internal/raft"
 )
 
 var (
@@ -200,6 +201,9 @@ func ReadLogs(filename string) *raft.LogStore {
 	return logStore
 }
 
+// resetElectionTimer ensures that the node's state is Follower, and sends a
+// signal to the reset channel (read by the StateManager, which controls the
+// timers used for elections)
 func (n *Node) resetElectionTimer() {
 	n.State = mgmt.Follower
 	go func() {
@@ -288,11 +292,18 @@ func (n *Node) requestVote(host string) (*raft.VoteReply, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*4)
 	defer cancel()
 
+	lastLogIndex := int64(len(n.Log.Entries)) - 1
+	var lastLogTerm int64
+	if lastLogIndex >= 0 {
+		lastLogTerm = n.Log.Entries[lastLogIndex].Term
+	} else {
+		lastLogTerm = 0
+	}
 	voteRequest := &raft.VoteRequest{
 		Term:         n.Term,
 		Candidate:    n.RaftNode,
-		LastLogIndex: 0,
-		LastLogTerm:  0}
+		LastLogIndex: lastLogIndex,
+		LastLogTerm:  lastLogTerm}
 
 	vote, err := n.otherNodes[host].Client.RequestVote(ctx, voteRequest)
 	if err != nil {
@@ -522,7 +533,7 @@ func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 	var wg sync.WaitGroup
 	for k := range n.otherNodes {
 		// append new entries
-		// update indicies
+		// update indices
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -627,18 +638,62 @@ func (n *Node) AddForeignNode(addr string) {
 	log.Info().Msgf("Added %s to known nodes", addr)
 }
 
+// candidateLogUpToDate checks if a candidate's log index is at least as high as
+// the node's commit index (e.g.: candidate has all known committed entries), and
+// that the
+func (n *Node) candidateLogUpToDate(cLogIndex int64, cLogTerm int64) bool {
+	indexGreater := cLogIndex > n.commitIndex
+	indexEqual := cLogIndex == n.commitIndex
+	bothEmpty := cLogIndex == -1 && n.commitIndex == -1
+	indexPresent := cLogIndex < int64(len(n.Log.Entries))
+
+	upToDate := indexGreater ||
+		bothEmpty ||
+		(indexEqual && cLogTerm == n.Log.Entries[cLogIndex].Term)
+
+	if !upToDate {
+		failLog := log.Debug().
+			Int64("CLogIdx", cLogIndex).
+			Int64("CommitIdx", n.commitIndex).
+			Int64("CLogTerm", cLogTerm)
+		if indexPresent {
+			failLog.Int64("LogTerm", n.Log.Entries[cLogIndex].Term)
+		}
+		failLog.Msg("candidate log not up to date")
+	}
+
+	return upToDate
+}
+
 // HandleVote responds to vote requests from candidate nodes
 func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 	log.Info().Msgf("%s proposed term: %d", req.Candidate.Id, req.Term)
 	var vote bool
 	var msg string
-	// todo: check candidate's log details
-	if req.Term <= n.Term {
+	if req.Term < n.Term {
 		vote = false
-		msg = "Expired term vote received"
+		msg = "Past term vote received"
+	} else if req.Term == n.Term {
+		vote = false
+		msg = "Current term vote received"
+		// If this node is the leader, and a vote request is received for the
+		// current term, the current term should be increased because the other
+		// node will have voted for itself and therefore not accept appends from
+		// this leader (this happens when a previous leader restarts and then
+		// comes back online and restarts an election for the current term, having
+		// not received an append request from this leader in its initial election
+		// window--shouldn't happen often, but if it does it would otherwise result
+		// in an otherwise unnecessary election)
+		if n.State == mgmt.Leader {
+			msg = msg + ", incrementing term"
+			n.SetTerm(n.Term+1, n.RaftNode)
+		}
 	} else if !n.CheckForeignNode(req.Candidate.Id, n.otherNodes) {
 		vote = false
 		msg = "Unknown foreign node: " + req.Candidate.Id
+	} else if !n.candidateLogUpToDate(req.LastLogIndex, req.LastLogTerm) {
+		vote = false
+		msg = "Candidate log not up to date"
 	} else {
 		msg = "Voting yay"
 		vote = true

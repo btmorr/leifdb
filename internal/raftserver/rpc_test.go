@@ -9,14 +9,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+	"github.com/rs/zerolog"
+
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/mgmt"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/btmorr/leifdb/internal/testutil"
 	"github.com/btmorr/leifdb/internal/util"
-	"github.com/golang/protobuf/proto"
 )
+
+func init() {
+	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	// zerolog.SetGlobalLevel(zerolog.DebugLevel)
+}
 
 // checkMock is used to skip membership checks during test, so that a Node will
 // respond to RPC calls without creating a full multi-node configuration
@@ -265,13 +272,13 @@ func TestVote(t *testing.T) {
 
 	testCases := []voteTestCase{
 		{
-			name: "Vote request expired term",
+			name: "Vote request current term",
 			request: &raft.VoteRequest{
 				Term:         1,
 				Candidate:    testRaftNode,
 				LastLogIndex: -1,
 				LastLogTerm:  0},
-			expectTerm:      1,
+			expectTerm:      2,
 			expectVote:      false,
 			expectNodeState: mgmt.Leader},
 		{
