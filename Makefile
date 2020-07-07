@@ -45,7 +45,11 @@ protobuf:
 	cp ./github.com/btmorr/leifdb/internal/raft/* ./internal/raft/
 	rm -rf ./github.com
 
-.PHONY: container
-container:
+.PHONY: linuxbin
+linuxbin:
 	env GOOS=linux GOARCH=amd64 go build -o build/leifdb
-	docker build -t leifdb:$(tag) .
+
+.PHONY: testcluster
+testcluster: linuxbin
+	make -C ui build
+	docker-compose up --build
