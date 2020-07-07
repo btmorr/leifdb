@@ -57,6 +57,16 @@ For other options, such as manually running the test suite, take a look at the c
 
 There's a very basic front end! It's capable to connecting to a server, and doing read/write/delete actions. Check out the [readme](./ui) in that directory for directions on installing and running it.
 
+## Starting a demo cluster
+
+This repo includes a docker-compose specification for starting a demo cluster with 3 nodes and the UI application. To build and start the demo cluster, do:
+
+```
+make testcluster
+```
+
+This is a great way to see the cluster in action, try out the UI, or as an example for configuration. Once the applications start, you can use a web browser to open [the UI interface](http://localhost:3000), and use "localhost:8080", "localhost:8081", or "localhost:8082" to connect to any of the server nodes and search/set/delete.
+
 ## Endpoints
 
 ### Database requests
