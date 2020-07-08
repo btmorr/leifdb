@@ -110,6 +110,7 @@ type Node struct {
 	Reset            chan bool
 	otherNodes       map[string]*ForeignNode
 	CheckForeignNode ForeignNodeChecker
+	AllowVote        bool
 	commitIndex      int64
 	lastApplied      int64
 	Log              *raft.LogStore
@@ -382,6 +383,8 @@ func (n *Node) DoElection() bool {
 			Msg("Election succeeded")
 		n.State = mgmt.Leader
 		success = true
+		// StateManager grace window job sets this back to true
+		n.AllowVote = false
 
 		for k := range n.otherNodes {
 			n.otherNodes[k].MatchIndex = -1
@@ -620,6 +623,7 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		Reset:            resetChannel,
 		otherNodes:       make(map[string]*ForeignNode),
 		CheckForeignNode: checkForeignNode,
+		AllowVote:        true,
 		commitIndex:      -1,
 		lastApplied:      -1,
 		Log:              logStore,
@@ -695,6 +699,9 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 	} else if !n.candidateLogUpToDate(req.LastLogIndex, req.LastLogTerm) {
 		vote = false
 		msg = "Candidate log not up to date"
+	} else if !n.AllowVote {
+		vote = false
+		msg = "Leader still in grace period"
 	} else {
 		msg = "Voting yay"
 		vote = true

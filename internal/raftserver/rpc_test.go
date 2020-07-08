@@ -299,6 +299,9 @@ func TestVote(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
+		// for this test, presume votes come in after grace interval
+		n.AllowVote = true
+
 		reply, err := s.RequestVote(ctx, tc.request)
 		time.Sleep(time.Microsecond * 300)
 		if err != nil {
