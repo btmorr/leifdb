@@ -13,6 +13,7 @@ import (
 
 func TestManager(t *testing.T) {
 	electionTimeout := time.Second / 4
+	minimumTimeout := electionTimeout / 2
 	appendInterval := time.Millisecond * 20
 
 	electionCounter := 0
@@ -28,6 +29,8 @@ func TestManager(t *testing.T) {
 			electionCounter++
 			return electionShouldSucceed
 		},
+		minimumTimeout,
+		func() {}, // grace window job (not checked here)
 		appendInterval,
 		func() { // append job
 			appendCounter++
@@ -102,5 +105,50 @@ func TestManager(t *testing.T) {
 	time.Sleep(appendInterval)
 	if electionCounter != 3 {
 		t.Errorf("Expected %d elections, got %d\n", 3, electionCounter)
+	}
+}
+
+func TestGraceWindow(t *testing.T) {
+	electionTimeout := time.Second / 4
+	minimumTimeout := electionTimeout / 2
+	appendInterval := time.Millisecond * 20
+
+	electionCounter := 0
+	appendCounter := 0
+	electionShouldSucceed := true
+	allowVote := true
+
+	resetFlag := make(chan bool)
+
+	NewStateManager(
+		resetFlag,
+		electionTimeout,
+		func() bool { // election job
+			electionCounter++
+			if electionShouldSucceed {
+				allowVote = false
+			}
+			return electionShouldSucceed
+		},
+		minimumTimeout,
+		func() {
+			allowVote = true
+		},
+		appendInterval,
+		func() { // append job
+			appendCounter++
+			return
+		})
+
+	if !allowVote {
+		t.Error("AllowVote should be true for follower")
+	}
+	time.Sleep(electionTimeout + appendInterval)
+	if allowVote {
+		t.Error("AllowVote should be false immediately after becoming leader")
+	}
+	time.Sleep(minimumTimeout + appendInterval)
+	if !allowVote {
+		t.Error("AllowVote should be true after grace window expires")
 	}
 }

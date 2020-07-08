@@ -37,16 +37,21 @@ func (l leaderState) stateType() Role {
 	return Leader
 }
 
-func newLeaderState(job func(), interval time.Duration) *leaderState {
+func newLeaderState(job func(), interval time.Duration, grace time.Duration, graceJob func()) *leaderState {
 	l := &leaderState{done: make(chan bool), job: job}
 	l.job()
-	t := time.NewTicker(interval)
+	graceCountdown := time.NewTimer(grace)
+	go func() {
+		<-graceCountdown.C
+		graceJob()
+	}()
+	appendTicker := time.NewTicker(interval)
 	go func() {
 		for {
 			select {
 			case <-l.done:
 				return
-			case <-t.C:
+			case <-appendTicker.C:
 				l.job()
 			default:
 			}
@@ -96,6 +101,8 @@ type StateManager struct {
 	state           state
 	electionFlag    chan bool
 	electionTimeout time.Duration
+	graceWindow     time.Duration
+	graceEndJob     func()
 	appendInterval  time.Duration
 	appendJob       func()
 }
@@ -103,7 +110,7 @@ type StateManager struct {
 func (s *StateManager) changeState(newState Role) {
 	s.state.stop()
 	if newState == Leader {
-		s.state = newLeaderState(s.appendJob, s.appendInterval)
+		s.state = newLeaderState(s.appendJob, s.appendInterval, s.graceWindow, s.graceEndJob)
 	} else {
 		s.state = newFollowerState(s.electionFlag, s.electionTimeout)
 	}
@@ -118,6 +125,7 @@ func (s *StateManager) ResetTimer() {
 // BecomeFollower explicitly changes the state to Follower
 func (s *StateManager) BecomeFollower() {
 	s.changeState(Follower)
+	s.graceEndJob()
 }
 
 // NewStateManager creates a StateManager with state initialized to Follower
@@ -136,6 +144,8 @@ func NewStateManager(
 	resetFlag chan bool,
 	electionTimeout time.Duration,
 	electionJob func() bool,
+	graceWindow time.Duration,
+	graceEndJob func(),
 	appendInterval time.Duration,
 	appendJob func()) *StateManager {
 
@@ -144,6 +154,8 @@ func NewStateManager(
 		state:           newFollowerState(c, electionTimeout),
 		electionFlag:    c,
 		electionTimeout: electionTimeout,
+		graceWindow:     graceWindow,
+		graceEndJob:     graceEndJob,
 		appendInterval:  appendInterval,
 		appendJob:       appendJob}
 
