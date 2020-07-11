@@ -45,12 +45,13 @@ var (
 )
 
 // A ForeignNode is another member of the cluster, with connections needed
-// to manage gRPC interaction with that node
+// to manage gRPC interaction with that node and track recent availability
 type ForeignNode struct {
 	Connection *grpc.ClientConn
 	Client     raft.RaftClient
 	NextIndex  int64
 	MatchIndex int64
+	Available  bool
 }
 
 // NewForeignNode constructs a ForeignNode from an address ("host:port")
@@ -72,7 +73,9 @@ func NewForeignNode(address string) (*ForeignNode, error) {
 		Connection: conn,
 		Client:     client,
 		NextIndex:  0,
-		MatchIndex: -1}, err
+		MatchIndex: -1,
+		Available:  true,
+	}, err
 }
 
 // Close cleans up the gRPC connection with the foreign node
@@ -316,6 +319,9 @@ func (n *Node) requestVote(host string) (*raft.VoteReply, error) {
 	vote, err := n.otherNodes[host].Client.RequestVote(ctx, voteRequest)
 	if err != nil {
 		log.Warn().Err(err).Msgf("Error requesting vote from %s", host)
+		n.otherNodes[host].Available = false
+	} else {
+		n.otherNodes[host].Available = true
 	}
 
 	return vote, err
@@ -371,9 +377,9 @@ func (n *Node) DoElection() bool {
 			}
 		}(k)
 	}
-	
+
 	wg.Wait()
-	
+
 	voteLog := log.Info().
 		Int("needed", majority).
 		Int("got", numVotes)
@@ -516,11 +522,14 @@ func (n *Node) requestAppend(host string, term int64) error {
 		if reply.Success {
 			n.otherNodes[host].MatchIndex = idx - 1
 			n.otherNodes[host].NextIndex = idx
+			n.otherNodes[host].Available = true
+			return nil
 		} else {
 			if prevLogIndex > 0 {
 				n.otherNodes[host].MatchIndex--
 				return n.requestAppend(host, term)
 			}
+			n.otherNodes[host].Available = false
 			return ErrAppendRangeMet
 			// todo: would it be viable for AppendReply to include the other
 			// node's log index, so this could fast-forward to the correct
@@ -529,6 +538,7 @@ func (n *Node) requestAppend(host string, term int64) error {
 			// realistic history when you add a fresh node
 		}
 	}
+	n.otherNodes[host].Available = false
 	return err
 }
 
@@ -654,6 +664,21 @@ func (n *Node) AddForeignNode(addr string) {
 	log.Trace().Msgf("AddForeignNode: %s", addr)
 	n.otherNodes[addr], _ = NewForeignNode(addr)
 	log.Info().Msgf("Added %s to known nodes", addr)
+}
+
+// availability returns the number of nodes believed to be currently available
+// and the number of total nodes in the current cluster configuration
+func (n *Node) availability() (int, int) {
+	// initialize to 1 to account for the self
+	available := 1
+	total := 1
+	for _, foreignNode := range n.otherNodes {
+		total++
+		if foreignNode.Available {
+			available++
+		}
+	}
+	return available, total
 }
 
 // candidateLogUpToDate checks if a candidate's log index is at least as high as
