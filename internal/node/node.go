@@ -116,6 +116,7 @@ type Node struct {
 	Log              *raft.LogStore
 	config           NodeConfig
 	Store            *db.Database
+	sync.Mutex
 }
 
 // Non-volatile state functions
@@ -273,6 +274,8 @@ func (n *Node) Set(key string, value string) error {
 		Action: raft.LogRecord_SET,
 		Key:    key,
 		Value:  value}
+	n.Lock()
+	defer n.Unlock()
 	return n.applyRecord(record)
 }
 
@@ -286,6 +289,8 @@ func (n *Node) Delete(key string) error {
 		Term:   n.Term,
 		Action: raft.LogRecord_DEL,
 		Key:    key}
+	n.Lock()
+	defer n.Unlock()
 	return n.applyRecord(record)
 }
 
