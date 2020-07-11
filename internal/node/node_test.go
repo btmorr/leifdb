@@ -57,6 +57,54 @@ func TestNewForeignNode(t *testing.T) {
 	fn.Close()
 }
 
+func TestAvailabilityReport(t *testing.T) {
+	n := setupNode(t)
+	n.State = mgmt.Leader
+
+	host1 := "localhost:12345"
+	host2 := "localhost:23456"
+	avail, total := n.availability()
+	if avail != 1 {
+		t.Errorf("Initial availability should be 1 (self), got %d\n", avail)
+	}
+	if total != 1 {
+		t.Errorf("Initial total should be 1 (self), got %d\n", total)
+	}
+
+	// add 1, no RPC functions have been called, availability should be true
+	n.AddForeignNode(host1)
+	avail, total = n.availability()
+	if avail != 2 {
+		t.Errorf("Availability with 1 other should be 2, got %d\n", avail)
+	}
+	if total != 2 {
+		t.Errorf("Total with 1 other should be 2, got %d\n", total)
+	}
+
+	// add another and make an RPC call to one of them, since RPC is not mocked,
+	// it will fail, so one will report unavailable
+	n.AddForeignNode(host2)
+	n.requestAppend(host2, n.Term)
+	avail, total = n.availability()
+	if avail != 2 {
+		t.Errorf("Availability with 1 other up, 1 other down should be 2, got %d\n", avail)
+	}
+	if total != 3 {
+		t.Errorf("Total with 2 others should be 3, got %d\n", total)
+	}
+
+	// make an RPC call to the other, now both others will be unavailable
+	n.requestVote(host1)
+	avail, total = n.availability()
+	if avail != 1 {
+		t.Errorf("Availability with 2 other down should be 1, got %d\n", avail)
+	}
+	if total != 3 {
+		t.Errorf("Total with 2 others should be 3, got %d\n", total)
+	}
+	// todo: mock RPC response and verify that availability goes back to true
+}
+
 func TestPersistence(t *testing.T) {
 	addr := "localhost:8080"
 	clientAddr := "localhost:16990"
