@@ -129,7 +129,7 @@ In order to interact with other members of a raft cluster, each node must know t
 - `LEIFDB_MODE`: must be "multi" (default is "single")
 - `LEIFDB_MEMBER_NODES`: must be a comma-separated list of addresses for other nodes, such as "10.10.0.2:16990,10.10.0.3:16990,10.10.0.4:16990"
 
-To run a cluster on one machine, make 3 directories named "~/testdata/a", "~/testdata/b", and "~/testdata/c". Replace "10.10.0.x" with either "localhost" or your computer's preferred IP (can get it from `ifconfig` on Unix/Linux or `ipconfig` on Windows, or from an error message by running a server with the config file as written--better methods forthcoming). Then open three terminal windows and execute these in each:
+To run a cluster on one machine, make 3 directories named "$HOME/testdata/a", "$HOME/testdata/b", and "$HOME/testdata/c". Replace "10.10.0.x" with either "localhost" or your computer's preferred IP (can get it from `ifconfig` on Unix/Linux or `ipconfig` on Windows, or from an error message by running a server with the config file as written--better methods forthcoming). Then open three terminal windows and execute these in each:
 
 ```
 env LEIFDB_DATA_DIR=~/testdata/a \
