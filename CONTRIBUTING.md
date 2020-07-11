@@ -2,9 +2,13 @@
 
 Thanks for taking an interest in contributing to LeifDB! This guide is meant to make it easy to get involved.
 
+## What to work on
+
+Contributions of all kinds are welcome. That might mean adding a bug report or feature request, getting involved in a discussion, or contributing code. If you don't know where to start, take a look at the [Issues](https://github.com/btmorr/leifdb/issues), which are also organized into [Milestones](https://github.com/btmorr/leifdb/milestones) representing discrete features that are larger than a single ticket. You're also welcome to submit ideas other than what's already there. If you have a question, go ahead and file an issue.
+
 ## Opening an issue
 
-Feature requests and bug reports can both be submitted by opening [an Issue in this repo](https://github.com/btmorr/leifdb/issues). One of the [maintainers](#maintainers)
+Feature requests and bug reports can both be submitted by opening [an Issue in this repo](https://github.com/btmorr/leifdb/issues).
 
 ## Opening pull requests
 

@@ -4,9 +4,9 @@
 [![License][license-badge]][license]
 [![Build Status][build-badge]][build]
 
-LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go. It has an [OpenAPIv2.0]-compatible HTTP interface for client interaction, and serves the schema for the client interface at the root HTTP endpoint to allow clients to discover and use endpoints programatically.
+LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go. It has an [OpenAPIv2.0]-compatible HTTP interface for client interaction, and serves the schema for the client interface at the root HTTP endpoint to allow clients to discover and use endpoints programatically. In the near future, it will also employ erasure codes to improve performance and storage footprint, as described in the [CRaft] paper (check out the [milestones](https://github.com/btmorr/leifdb/milestones) to check on progress).
 
-The aim of this project is to build a distributed, consistent, fault-tolerant database along the lines of [etcd], which backs [Kubernetes]; [Consul], which backs [Vault] and other HashiCorp tools; or [ZooKeeper], which backs most Hadoop-related projects (etcd and Consul use Raft, ZooKeeper uses a similar algorithm called [Zab], and there are others that use other algorithms such as [Paxos]).
+The aim of this project is to build a distributed, consistent, fault-tolerant K-V store providing high throughput and minimizing storage footprint at large scale.
 
 Contributions are welcome! Check out the [Contributing Guide] for more info on how to make feature requests, submit bug reports, or create pull requests.
 
@@ -188,11 +188,14 @@ Aside from the Raft papers themselves ([short] and [extended], here are some rel
 - A [talk on Raft] from the [Consul] team
 - [Jay Kreps' article on Logs]
 - [Distributed systems for fun and profit]
-- The "Measurement" section of [Paxos Made Live] has a good discussion of performance benchmarking (also, compare performance with differing levels of debug logging turned on)
+- [Paxos made simple] for comparison with other strategies
+- The "Measurement" section of [Paxos Made Live] has a good discussion of performance benchmarking
 
 [Raft]: https://raft.github.io/
 [short]: https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf
 [extended]: https://raft.github.io/raft.pdf
+[CRaft]: https://www.usenix.org/system/files/fast20-wang_zizhong.pdf
+
 [The Secret Lives of Data]: http://thesecretlivesofdata.com/raft/
 [Eli Bendersky's blog post]: https://eli.thegreenplace.net/2020/implementing-raft-part-0-introduction/
 [talk on Raft]: https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained/
@@ -208,7 +211,7 @@ Aside from the Raft papers themselves ([short] and [extended], here are some rel
 [Vault]: https://www.vaultproject.io/
 [ZooKeeper]: https://zookeeper.apache.org/
 [Zab]: https://www.cs.cornell.edu/courses/cs6452/2012sp/papers/zab-ieee.pdf
-[Paxos]: http://research.microsoft.com/users/lamport/pubs/paxos-simple.pdf
+[Paxos made simple]: http://research.microsoft.com/users/lamport/pubs/paxos-simple.pdf
 
 [swaggo/swag]: https://github.com/swaggo/swag/
 [gin-gonic/gin]: https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview
