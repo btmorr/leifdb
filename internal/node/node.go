@@ -366,6 +366,9 @@ func (n *Node) DoElection() bool {
 			}
 		}(k)
 	}
+	
+	wg.Wait()
+	
 	voteLog := log.Info().
 		Int("needed", majority).
 		Int("got", numVotes)
