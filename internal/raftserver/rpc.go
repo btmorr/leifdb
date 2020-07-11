@@ -23,7 +23,7 @@ func (s *server) RequestVote(
 	return s.Node.HandleVote(v), nil
 }
 
-// RequestVote handles RPC log-append requests from other nodes
+// AppendLogs handles RPC log-append requests from other nodes
 func (s *server) AppendLogs(
 	ctx context.Context,
 	a *raft.AppendRequest) (*raft.AppendReply, error) {
