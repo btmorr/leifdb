@@ -32,7 +32,7 @@ var (
 	ErrExpiredTerm = errors.New("Do not send append requests for expired terms")
 
 	// ErrAppendFailed indicates that an append job ran out of retry attempts
-	// without successfully appending to a majorit of nodes
+	// without successfully appending to a majority of nodes
 	ErrAppendFailed = errors.New("Failed to append logs to a majority of nodes")
 
 	// ErrCommitFailed indicates that the leader's commit index after append
@@ -55,7 +55,8 @@ type ForeignNode struct {
 
 // NewForeignNode constructs a ForeignNode from an address ("host:port")
 func NewForeignNode(address string) (*ForeignNode, error) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Millisecond*100)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
 	conn, err := grpc.DialContext(
 		ctx,
 		address,
@@ -340,24 +341,30 @@ func (n *Node) DoElection() bool {
 	numVotes := 1
 	maxTermSeen := n.Term
 	maxTermSeenSource := n.votedFor
+
+	var wg sync.WaitGroup
+	wg.Add(len(n.otherNodes))
+
 	for k := range n.otherNodes {
-		// put this in a goroutine and use a sync.WaitGroup to collect? if needed
-		// for performance, figure out how to collect the term responses in a
-		// thread-safe way
-		vote, err := n.requestVote(k)
-		log.Trace().Msg("got a vote")
-		if err != nil {
-			continue
-		}
-		if vote.VoteGranted {
-			log.Trace().Msg("it's a 'yay'")
-			numVotes = numVotes + 1
-		} else {
-			if vote.Term > maxTermSeen {
-				maxTermSeen = vote.Term
-				maxTermSeenSource = vote.Node
+		// if needed for performance, figure out how to collect the term responses in a thread-safe way
+		go func(k string) {
+			defer wg.Done()
+
+			vote, err := n.requestVote(k)
+			log.Trace().Msg("got a vote")
+			if err != nil {
+				return
 			}
-		}
+			if vote.VoteGranted {
+				log.Trace().Msg("it's a 'yay'")
+				numVotes++
+			} else {
+				if vote.Term > maxTermSeen {
+					maxTermSeen = vote.Term
+					maxTermSeenSource = vote.Node
+				}
+			}
+		}(k)
 	}
 	voteLog := log.Info().
 		Int("needed", majority).
@@ -505,9 +512,8 @@ func (n *Node) requestAppend(host string, term int64) error {
 			if prevLogIndex > 0 {
 				n.otherNodes[host].MatchIndex--
 				return n.requestAppend(host, term)
-			} else {
-				return ErrAppendRangeMet
 			}
+			return ErrAppendRangeMet
 			// todo: would it be viable for AppendReply to include the other
 			// node's log index, so this could fast-forward to the correct
 			// index, rather than recursing possibly down the whole list?
@@ -539,7 +545,7 @@ func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 		// append new entries
 		// update indices
 		wg.Add(1)
-		go func() {
+		go func(k string) {
 			defer wg.Done()
 			err := n.requestAppend(k, term)
 			if err != nil {
@@ -549,7 +555,7 @@ func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 				// is this threadsafe?
 				numAppended++
 			}
-		}()
+		}(k)
 	}
 	wg.Wait()
 
@@ -564,9 +570,8 @@ func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 		// did not get a majority
 		if retriesRemaining > 0 {
 			return n.SendAppend(retriesRemaining-1, term)
-		} else {
-			return ErrAppendFailed
 		}
+		return ErrAppendFailed
 	}
 	return nil
 }
