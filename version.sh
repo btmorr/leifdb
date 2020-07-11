@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
+BRANCH=$(git rev-parse --abbrev-ref HEAD | sed 's/\//-/')
 SHORT_HASH=$(git rev-parse --short HEAD)
 VERSION="0.2.0-beta.0"
 
