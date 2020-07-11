@@ -37,7 +37,7 @@ Go v1.14 is the only strict requirement for this project. You can find instructi
 
 If you want to change something in a probobuf definition, you'll also need protoc and the protoc-gen-go plugin.
 
-To install protoc, download the package for your OS [here](https://github.com/protocolbuffers/protobuf/releases/), unzip it, and move the protoc binary from the resulting "bin" directory into \$GOPATH/bin. Then run this command to install the plugin to generate Go code from a .proto file:
+To install protoc, download the package for your OS [here](https://github.com/protocolbuffers/protobuf/releases/), unzip it, and move the protoc binary from the resulting "bin" directory into `$GOPATH/bin`. Then run this command to install the plugin to generate Go code from a .proto file:
 
 ```
 go install google.golang.org/protobuf/cmd/protoc-gen-go
