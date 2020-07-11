@@ -17,6 +17,7 @@ If you have an improvement that you'd like to share, pull requests are appreciat
 You may already have a developer environment set up. If not, check out the [section below](#developer-environment) for recommendations.
 
 Is the PR related to an open issue?
+
 - If so, [link the PR to the issue](https://help.github.com/en/github/managing-your-work-on-github/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword), such as "Closes #123"--this will make it so that when the PR is merged, the issue will be closed automatically
 - If not, please include an explanation of the goal of the PR in the description (ideally including the info you would put in an issue describing the feature or fix that is the subject of the PR)
 
@@ -36,7 +37,7 @@ Go v1.14 is the only strict requirement for this project. You can find instructi
 
 If you want to change something in a probobuf definition, you'll also need protoc and the protoc-gen-go plugin.
 
-To install protoc, download the package for your OS [here](https://github.com/protocolbuffers/protobuf/releases/), unzip it, and move the protoc binary from the resulting "bin" directory into $GOPATH/bin. Then run this command to install the plugin to generate Go code from a .proto file:
+To install protoc, download the package for your OS [here](https://github.com/protocolbuffers/protobuf/releases/), unzip it, and move the protoc binary from the resulting "bin" directory into `$GOPATH/bin`. Then run this command to install the plugin to generate Go code from a .proto file:
 
 ```
 go install google.golang.org/protobuf/cmd/protoc-gen-go
@@ -73,3 +74,4 @@ The version number is currently determined by a variable in "version.sh". The `m
 
 - [Toma Morris](https://github.com/btmorr)
 - [Suhail Patel](https://github.com/suhailpatel)
+- [Sameer Kolhar](https://github.com/kolharsam)
