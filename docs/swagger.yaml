@@ -8,6 +8,8 @@ definitions:
     properties:
       status:
         type: string
+      version:
+        type: string
     type: object
   main.ReadResponse:
     properties:
