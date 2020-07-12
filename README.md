@@ -182,7 +182,7 @@ You can now issue read and write requests to any node (writes will be redirected
 
 ## Prior art
 
-Aside from the Raft papers themselves ([short] and [extended], here are some related resources:
+Aside from the Raft papers themselves ([short] and [extended]) and the [CRaft] paper, here are some related resources:
 - [The Secret Lives of Data]
 - [Eli Bendersky's blog post]
 - A [talk on Raft] from the [Consul] team
