@@ -26,11 +26,8 @@ import (
 
 var (
 	ErrInvalidTimeouts = errors.New("appendInterval must be shorter than minimum election window")
-)
-
-const (
 	// LeifDBVersion is a flag the indicates the version of the current build
-	LeifDBVersion = ""
+	LeifDBVersion = "Version not defined"
 )
 
 // @title LeifDb Client API
