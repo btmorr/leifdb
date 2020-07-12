@@ -27,6 +27,8 @@ import (
 
 var (
 	ErrInvalidTimeouts = errors.New("appendInterval must be shorter than minimum election window")
+	// LeifDBVersion is a flag the indicates the version of the current build
+	LeifDBVersion = "Version not defined"
 	logLevel           string
 )
 
@@ -49,7 +51,8 @@ func NewController(n *node.Node) *Controller {
 // HealthResponse is a response body template for the health route [note: this
 // endpoint takes a GET request, so there is no corresponding Request type]
 type HealthResponse struct {
-	Status string `json:"status"`
+	Status  string `json:"status"`
+	Version string `json:"version"`
 }
 
 // Handler for the health endpoint--not required for Raft, but useful for
@@ -64,7 +67,7 @@ type HealthResponse struct {
 func (ctl *Controller) handleHealth(c *gin.Context) {
 	// todo: add checking on other aspects of the system, remember to
 	// include an at-failure directive for swagger
-	c.JSON(http.StatusOK, HealthResponse{Status: "Ok"})
+	c.JSON(http.StatusOK, HealthResponse{Status: "OK", Version: LeifDBVersion})
 }
 
 // ReadResponse is a response body template for the data read route [note: this

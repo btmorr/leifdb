@@ -36,7 +36,7 @@ app: clean
 	swag init
 	gofmt -w -s .
 	go vet
-	go build -tags=unit,mgmttest -o $(binary_prefix)$(version)
+	go build -ldflags "-X 'main.LeifDBVersion=$(version)'" -tags=unit,mgmttest -o $(binary_prefix)$(version)
 
 .PHONY: protobuf
 protobuf:
@@ -47,7 +47,7 @@ protobuf:
 
 .PHONY: linuxbin
 linuxbin:
-	env GOOS=linux GOARCH=amd64 go build -o build/leifdb
+	env GOOS=linux GOARCH=amd64 go build -ldflags "-X 'main.LeifDBVersion=$(version)'" -o build/leifdb
 
 .PHONY: testcluster
 testcluster: linuxbin
