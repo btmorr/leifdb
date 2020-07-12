@@ -185,6 +185,9 @@ var doc = `{
             "properties": {
                 "status": {
                     "type": "string"
+                },
+                "version": {
+                    "type": "string"
                 }
             }
         },
