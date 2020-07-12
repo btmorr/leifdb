@@ -1,4 +1,5 @@
 version = $(shell bash ./version.sh)
+ext = $(shell bash ./extension.sh)
 
 # Note: be careful with values for `binary_prefix`, because of how it is used
 # in the "clean" task--it will delete any files with this prefix
@@ -36,7 +37,7 @@ app: clean
 	swag init
 	gofmt -w -s .
 	go vet
-	go build -ldflags "-X 'main.LeifDBVersion=$(version)'" -tags=unit,mgmttest -o $(binary_prefix)$(version)
+	go build -ldflags "-X 'main.LeifDBVersion=$(version)'" -tags=unit,mgmttest -o $(binary_prefix)$(version)$(ext)
 
 .PHONY: protobuf
 protobuf:
