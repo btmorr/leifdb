@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"math/rand"
 	"net"
@@ -29,7 +28,6 @@ var (
 	ErrInvalidTimeouts = errors.New("appendInterval must be shorter than minimum election window")
 	// LeifDBVersion is a flag the indicates the version of the current build
 	LeifDBVersion = "Version not defined"
-	logLevel           string
 )
 
 // @title LeifDb Client API
@@ -205,38 +203,14 @@ func buildRouter(n *node.Node) *gin.Engine {
 	return router
 }
 
-func getLogLevel() zerolog.Level {
-	switch logLevel {
-	case "panic":
-		return zerolog.PanicLevel
-	case "fatal":
-		return zerolog.FatalLevel
-	case "error":
-		return zerolog.ErrorLevel
-	case "warn":
-		return zerolog.WarnLevel
-	case "info":
-		return zerolog.InfoLevel
-	case "debug":
-		return zerolog.DebugLevel
-	case "trace":
-		return zerolog.TraceLevel
-	default:
-		return zerolog.InfoLevel
-	}
-}
-
 // For more human-readable logs, uncomment the following function and add the
 // associated imports ("github.com/rs/zerolog", and "os")
 func init() {
-	flag.StringVar(&logLevel, "log-level", "info", "use to specify any of the log levels as specified in the zerolog docs")
-	flag.Parse()
-
 	log.Logger = log.Output(zerolog.ConsoleWriter{
 		Out:        os.Stdout,
 		TimeFormat: time.RFC3339})
-	logLvl := getLogLevel()
-	zerolog.SetGlobalLevel(logLvl)
+	logLevel := configuration.GetLogLevel()
+	zerolog.SetGlobalLevel(logLevel)
 }
 
 func main() {
