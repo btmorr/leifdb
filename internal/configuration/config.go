@@ -225,7 +225,7 @@ func BuildServerConfig() *ServerConfig {
 
 // GetLogLevel fetches the log level set at the env var: LEIF_LOG_LEVEL
 func GetLogLevel() zerolog.Level {
-	logLevel, ok := os.LookupEnv("LEIF_LOG_LEVEL")
+	logLevel, ok := os.LookupEnv("LEIFDB_LOG_LEVEL")
 
 	if !ok {
 		return zerolog.InfoLevel
