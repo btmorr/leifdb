@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/btmorr/leifdb/internal/util"
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -220,4 +221,32 @@ func BuildServerConfig() *ServerConfig {
 		ClientAddr: clientAddr,
 		Mode:       ccfg.Mode,
 		NodeIds:    ccfg.NodeIds}
+}
+
+// GetLogLevel fetches the log level set at the env var: LEIF_LOG_LEVEL
+func GetLogLevel() zerolog.Level {
+	logLevel, ok := os.LookupEnv("LEIFDB_LOG_LEVEL")
+
+	if !ok {
+		return zerolog.InfoLevel
+	}
+
+	switch logLevel {
+	case "panic":
+		return zerolog.PanicLevel
+	case "fatal":
+		return zerolog.FatalLevel
+	case "error":
+		return zerolog.ErrorLevel
+	case "warn":
+		return zerolog.WarnLevel
+	case "info":
+		return zerolog.InfoLevel
+	case "debug":
+		return zerolog.DebugLevel
+	case "trace":
+		return zerolog.TraceLevel
+	default:
+		return zerolog.InfoLevel
+	}
 }

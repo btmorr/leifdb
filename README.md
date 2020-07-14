@@ -22,7 +22,7 @@ The simplest way to build and test the application is to enter:
 make
 ```
 
-This will clean, build, and test the code (make tasks may not currently work on Windows without [Windows Subsystem for Linux] or Git Bash terminal). 
+This will clean, build, and test the code (make tasks may not currently work on Windows without [Windows Subsystem for Linux] or Git Bash terminal).
 
 To run the database run this command, replacing "\<version>" with the current version number:
 
@@ -45,6 +45,7 @@ env LEIFDB_HTTP_PORT=8081 ./leifdb
 ```
 
 On Windows PowerShell:
+
 ```
 go clean
 go build -tags=unit,mgmttest -o leifdb.exe
@@ -120,7 +121,7 @@ The gRPC interface is used for interactions between members of the Raft cluster.
 
 ### Data directory
 
-The persistent data directory is used for storing configuration files and non-volatile server state, and can be specified using the `LEIFDB_DATA_DIR` environment variable with a path. The path may point to a non-existent location, but cannot exactly match an existing file (an existing directory is fine). If no value is provided, "$HOME/.leifdb/<addr_hash>" is used, where "<addr_hash>" is a non-cryptographic hash of the gRPC interface for the server (such that configuration is consistent for a server as long as it is deployed with the same hostname or IP address and same port specified by `LEIFDB_DATA_DIR`)
+The persistent data directory is used for storing configuration files and non-volatile server state, and can be specified using the `LEIFDB_DATA_DIR` environment variable with a path. The path may point to a non-existent location, but cannot exactly match an existing file (an existing directory is fine). If no value is provided, "\$HOME/.leifdb/<addr_hash>" is used, where "<addr_hash>" is a non-cryptographic hash of the gRPC interface for the server (such that configuration is consistent for a server as long as it is deployed with the same hostname or IP address and same port specified by `LEIFDB_DATA_DIR`)
 
 ### Cluster configuration
 
@@ -129,7 +130,7 @@ In order to interact with other members of a raft cluster, each node must know t
 - `LEIFDB_MODE`: must be "multi" (default is "single")
 - `LEIFDB_MEMBER_NODES`: must be a comma-separated list of addresses for other nodes, such as "10.10.0.2:16990,10.10.0.3:16990,10.10.0.4:16990"
 
-To run a cluster on one machine, make 3 directories named "$HOME/testdata/a", "$HOME/testdata/b", and "$HOME/testdata/c". Replace "10.10.0.x" with either "localhost" or your computer's preferred IP (can get it from `ifconfig` on Unix/Linux or `ipconfig` on Windows, or from an error message by running a server with the config file as written--better methods forthcoming). Then open three terminal windows and execute these in each:
+To run a cluster on one machine, make 3 directories named "$HOME/testdata/a", "$HOME/testdata/b", and "\$HOME/testdata/c". Replace "10.10.0.x" with either "localhost" or your computer's preferred IP (can get it from `ifconfig` on Unix/Linux or `ipconfig` on Windows, or from an error message by running a server with the config file as written--better methods forthcoming). Then open three terminal windows and execute these in each:
 
 ```
 env LEIFDB_DATA_DIR=~/testdata/a \
@@ -178,11 +179,16 @@ Follower nodes will be streaming messages like:
 2020-06-04T07:40:16-04:00 DBG Received append request: term:105 leaderId:"192.168.1.21:16991" prevLogIndex:1 prevLogTerm:97 leaderCommit:1
 ```
 
-You can now issue read and write requests to any node (writes will be redirected to the leader--remember to use the `-L` flag if you are using curl). See [Database requests](#database-requests) for writing read/write requests. 
+You can now issue read and write requests to any node (writes will be redirected to the leader--remember to use the `-L` flag if you are using curl). See [Database requests](#database-requests) for writing read/write requests.
+
+### Log Level Configuration
+
+The log level can be set using the environment variable `LEIFDB_LOG_LEVEL`. The value can be either one of `panic`, `fatal`, `error`, `warn`, `info`, `debug` or `trace`. By default, the log level is set to be `info`.
 
 ## Prior art
 
 Aside from the Raft papers themselves ([short] and [extended]) and the [CRaft] paper, here are some related resources:
+
 - [The Secret Lives of Data]
 - [Eli Bendersky's blog post]
 - A [talk on Raft] from the [Consul] team
@@ -191,40 +197,34 @@ Aside from the Raft papers themselves ([short] and [extended]) and the [CRaft] p
 - [Paxos made simple] for comparison with other strategies
 - The "Measurement" section of [Paxos Made Live] has a good discussion of performance benchmarking
 
-[Raft]: https://raft.github.io/
+[raft]: https://raft.github.io/
 [short]: https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf
 [extended]: https://raft.github.io/raft.pdf
-[CRaft]: https://www.usenix.org/system/files/fast20-wang_zizhong.pdf
-
-[The Secret Lives of Data]: http://thesecretlivesofdata.com/raft/
-[Eli Bendersky's blog post]: https://eli.thegreenplace.net/2020/implementing-raft-part-0-introduction/
-[talk on Raft]: https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained/
-[Jay Kreps' article on Logs]: https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying
-[Distributed systems for fun and profit]: http://book.mixu.net/distsys/
-[Paxos Made Live]: https://dl.acm.org/doi/10.1145/1281100.1281103
-[OpenAPIv2.0]: http://spec.openapis.org/oas/v2.0
-
-[Docker]: https://www.docker.com/
+[craft]: https://www.usenix.org/system/files/fast20-wang_zizhong.pdf
+[the secret lives of data]: http://thesecretlivesofdata.com/raft/
+[eli bendersky's blog post]: https://eli.thegreenplace.net/2020/implementing-raft-part-0-introduction/
+[talk on raft]: https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained/
+[jay kreps' article on logs]: https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying
+[distributed systems for fun and profit]: http://book.mixu.net/distsys/
+[paxos made live]: https://dl.acm.org/doi/10.1145/1281100.1281103
+[openapiv2.0]: http://spec.openapis.org/oas/v2.0
+[docker]: https://www.docker.com/
 [etcd]: https://etcd.io
-[Kubernetes]: https://kubernetes.io/
-[Consul]: https://www.consul.io/
-[Vault]: https://www.vaultproject.io/
-[ZooKeeper]: https://zookeeper.apache.org/
-[Zab]: https://www.cs.cornell.edu/courses/cs6452/2012sp/papers/zab-ieee.pdf
-[Paxos made simple]: http://research.microsoft.com/users/lamport/pubs/paxos-simple.pdf
-
+[kubernetes]: https://kubernetes.io/
+[consul]: https://www.consul.io/
+[vault]: https://www.vaultproject.io/
+[zookeeper]: https://zookeeper.apache.org/
+[zab]: https://www.cs.cornell.edu/courses/cs6452/2012sp/papers/zab-ieee.pdf
+[paxos made simple]: http://research.microsoft.com/users/lamport/pubs/paxos-simple.pdf
 [swaggo/swag]: https://github.com/swaggo/swag/
 [gin-gonic/gin]: https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview
 [preflight requests]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
-
-[Windows Subsystem for Linux]: https://docs.microsoft.com/en-us/windows/wsl/about
-
+[windows subsystem for linux]: https://docs.microsoft.com/en-us/windows/wsl/about
 [report-card]: https://goreportcard.com/report/github.com/btmorr/leifdb
 [report-card-badge]: https://goreportcard.com/badge/github.com/btmorr/leifdb
 [license]: https://github.com/btmorr/leifdb/LICENSE
 [license-badge]: https://img.shields.io/github/license/btmorr/leifdb.svg
 [build]: https://travis-ci.com/btmorr/leifdb
 [build-badge]: https://travis-ci.com/btmorr/leifdb.svg?branch=edge
-
-[Contributing Guide]: ./CONTRIBUTING.md
+[contributing guide]: ./CONTRIBUTING.md
 [example config file]: ./config/default_config.toml
