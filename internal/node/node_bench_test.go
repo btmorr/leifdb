@@ -24,6 +24,7 @@ func checkForeignNodeMock(addr string, known map[string]*ForeignNode) bool {
 
 func setupNodeBench(b *testing.B) *Node {
 	addr := "localhost:8080"
+	clientAddr := "localhost:3000"
 
 	testDir, err := util.CreateTmpDir(".tmp-leifdb")
 	if err != nil {
@@ -35,7 +36,7 @@ func setupNodeBench(b *testing.B) *Node {
 
 	store := db.NewDatabase()
 
-	config := NewNodeConfig(testDir, addr, make([]string, 0, 0))
+	config := NewNodeConfig(testDir, addr, clientAddr, []string{})
 	n, _ := NewNode(config, store)
 	n.CheckForeignNode = checkForeignNodeMock
 	return n
@@ -44,11 +45,14 @@ func setupNodeBench(b *testing.B) *Node {
 func BenchmarkEmptyAppend(b *testing.B) {
 	n := setupNodeBench(b)
 	req := &raft.AppendRequest{
-		Term:         1,
-		LeaderId:     "localhost:8181",
+		Term: 1,
+		Leader: &raft.Node{
+			Id:         "localhost:8181",
+			ClientAddr: "localhost:1234",
+		},
 		PrevLogIndex: -1,
 		PrevLogTerm:  -1,
-		Entries:      make([]*raft.LogRecord, 0, 0),
+		Entries:      []*raft.LogRecord{},
 		LeaderCommit: -1}
 
 	for i := 0; i < b.N; i++ {
@@ -67,9 +71,12 @@ func BenchmarkFullAppend(b *testing.B) {
 			Key:    "a",
 			Value:  "b"}
 		req := &raft.AppendRequest{
-			Term:         term,
-			LeaderId:     "localhost:8181",
-			PrevLogIndex: term - 1,
+			Term: term,
+			Leader: &raft.Node{
+				Id:         "localhost:8181",
+				ClientAddr: "localhost:1234",
+			},
+			PrevLogIndex: term - 2,
 			PrevLogTerm:  term - 1,
 			Entries:      []*raft.LogRecord{record},
 			LeaderCommit: term - 1}
