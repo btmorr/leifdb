@@ -1,6 +1,10 @@
 package database
 
-import iradix "github.com/hashicorp/go-immutable-radix"
+import (
+	"encoding/json"
+
+	iradix "github.com/hashicorp/go-immutable-radix"
+)
 
 // A Database is a key-value store
 type Database struct {
@@ -31,4 +35,39 @@ func NewDatabase() *Database {
 	return &Database{
 		underlying: iradix.New(),
 	}
+}
+
+// Clone makes a new instance of a database from an existing one
+func Clone(db *Database) *Database {
+	return &Database{
+		underlying: db.underlying,
+	}
+}
+
+type pair struct {
+	K string
+	V string
+}
+
+// BuildSnapshot serializes
+func BuildSnapshot(db *Database) ([]byte, error) {
+	accumulator := []pair{}
+	db.underlying.Root().Walk(func(key []byte, value interface{}) bool {
+		accumulator = append(accumulator, pair{K: string(key), V: value.(string)})
+		return false
+	})
+	return json.Marshal(accumulator)
+}
+
+func InstallSnapshot(data []byte) (*Database, error) {
+	var pairs []pair
+	db := NewDatabase()
+
+	if err := json.Unmarshal(data, &pairs); err != nil {
+		return nil, err
+	}
+	for _, p := range pairs {
+		db.Set(p.K, p.V)
+	}
+	return db, nil
 }
