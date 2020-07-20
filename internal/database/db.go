@@ -1,28 +1,34 @@
 package database
 
+import iradix "github.com/hashicorp/go-immutable-radix"
+
 // A Database is a key-value store
 type Database struct {
-	underlying map[string]string
+	underlying *iradix.Tree
 }
 
-// Get retreives the value for a key (empty string if key does not exist)
+// Get retrieves the value for a key (empty string if key does not exist)
 func (d *Database) Get(key string) string {
-	r := d.underlying[key]
-	return r
+	r, _ := d.underlying.Get([]byte(key))
+	if r == nil {
+		return ""
+	}
+	return r.(string)
 }
 
 // Set assigns a value to a key
 func (d *Database) Set(key string, value string) {
-	d.underlying[key] = value
+	d.underlying, _, _ = d.underlying.Insert([]byte(key), value)
 }
 
 // Delete removes a key and value from the store
 func (d *Database) Delete(key string) {
-	delete(d.underlying, key)
+	d.underlying, _, _ = d.underlying.Delete([]byte(key))
 }
 
 // NewDatabase returns an initialized Database
 func NewDatabase() *Database {
 	return &Database{
-		underlying: make(map[string]string)}
+		underlying: iradix.New(),
+	}
 }
