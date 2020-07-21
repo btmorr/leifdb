@@ -49,7 +49,8 @@ type pair struct {
 	V string
 }
 
-// BuildSnapshot serializes
+// BuildSnapshot serializes the database state into a JSON array of objects
+// with keys K and V and the key and value for each entry as respective values
 func BuildSnapshot(db *Database) ([]byte, error) {
 	accumulator := []pair{}
 	db.underlying.Root().Walk(func(key []byte, value interface{}) bool {
@@ -59,6 +60,8 @@ func BuildSnapshot(db *Database) ([]byte, error) {
 	return json.Marshal(accumulator)
 }
 
+// InstallSnapshot deserializes a JSON string (following the schema created by
+// BuildSnapshot) and returns a populated Database
 func InstallSnapshot(data []byte) (*Database, error) {
 	var pairs []pair
 	db := NewDatabase()

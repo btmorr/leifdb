@@ -27,6 +27,11 @@ var (
 	// the preferred outbound IP address and chosen RaftPort for this server
 	ErrSelfNotInConfig = errors.New(
 		"This node must be included in the configration")
+
+	// ErrInvalidNSnapshots indicates that a number less than 1 was specified
+	// for retaining snapshots
+	ErrInvalidNSnapshots = errors.New(
+		"Number of snapshots to retain must be greater than 0")
 )
 
 // GetOutboundIP returns ip of preferred interface this machine
@@ -53,24 +58,26 @@ func init() {
 // ClusterMode is one of "single" or "multi" for describing distribution mode
 type ClusterMode string
 
-// Single is a cluster of one node, which only trivally involves Raft functions
+// Single is a cluster of one node, which only trivially involves Raft
 // Multi is a cluster of more than one node, requiring full Raft coordination
 const (
 	SingleNode ClusterMode = "single"
 	MultiNode              = "multi"
 )
 
-// A ServerConfig contains the configuation values needed for other parts of
+// A ServerConfig contains the configuration values needed for other parts of
 // the server (see `BuildConfig`)
 type ServerConfig struct {
-	Host       string
-	DataDir    string
-	RaftPort   string
-	RaftAddr   string
-	ClientPort string
-	ClientAddr string
-	Mode       ClusterMode
-	NodeIds    []string
+	Host              string
+	DataDir           string
+	SnapshotThreshold int
+	RetainNSnapshots  int
+	RaftPort          string
+	RaftAddr          string
+	ClientPort        string
+	ClientAddr        string
+	Mode              ClusterMode
+	NodeIds           []string
 }
 
 type ClusterConfig struct {
@@ -166,45 +173,49 @@ func buildClusterConfig(dataDir string, raftAddr string) *ClusterConfig {
 		NodeIds: foreignNodes}
 }
 
+func getEnvDefault(key string, fallback func() string) string {
+	res := os.Getenv(key)
+	if res == "" {
+		res = fallback()
+	}
+	return res
+}
+
+func verifyInt(s string) {
+	if _, err := strconv.Atoi(s); err != nil {
+		panic(err)
+	}
+}
+
 // BuildConfig performs all operations needed to parse configuration options
-// from environment variables, precompute other static configration values from
-// those options, and perform tasks that ensure that the configration is
+// from environment variables, pre-compute other static configuration values
+// from those options, and perform tasks that ensure that the configuration is
 // locally valid (such as checking that the IP and RaftPort for this machine
 // are included in the cluster configuration)
 func BuildServerConfig() *ServerConfig {
-	dataDir := os.Getenv("LEIFDB_DATA_DIR")
-	raftPort := os.Getenv("LEIFDB_RAFT_PORT")
-	if raftPort == "" {
-		raftPort = "16990"
-	}
-	if _, err := strconv.Atoi(raftPort); err != nil {
-		panic(err)
-	}
+	raftPort := getEnvDefault(
+		"LEIFDB_RAFT_PORT", func() string { return "16990" })
+	verifyInt(raftPort)
 
-	clientPort := os.Getenv("LEIFDB_HTTP_PORT")
-	if clientPort == "" {
-		clientPort = "8080"
-	}
-	if _, err := strconv.Atoi(clientPort); err != nil {
-		panic(err)
-	}
+	clientPort := getEnvDefault(
+		"LEIFDB_HTTP_PORT", func() string { return "8080" })
+	verifyInt(clientPort)
 
-	host := os.Getenv("LEIFDB_HOST")
-	if host == "" {
-		host = GetOutboundIP().String()
-	}
+	host := getEnvDefault(
+		"LEIFDB_HOST", func() string { return GetOutboundIP().String() })
 
 	raftAddr := net.JoinHostPort(host, raftPort)
 	clientAddr := net.JoinHostPort(host, clientPort)
 
-	if dataDir == "" {
+	dataDir := getEnvDefault("LEIFDB_DATA_DIR", func() string {
 		hash := fnv.New32()
 		hash.Write([]byte(raftAddr))
 		hashString := fmt.Sprintf("%x", hash.Sum(nil))
 
 		homeDir, _ := os.UserHomeDir()
-		dataDir = filepath.Join(homeDir, ".leifdb", hashString)
-	}
+		return filepath.Join(homeDir, ".leifdb", hashString)
+	})
+
 	err2 := util.EnsureDirectory(dataDir)
 	if err2 != nil {
 		panic(err2)
@@ -212,9 +223,25 @@ func BuildServerConfig() *ServerConfig {
 
 	ccfg := buildClusterConfig(dataDir, raftAddr)
 
+	// by default, snapshot when log is 1Gb
+	snapshotThreshold := getEnvDefault(
+		"LEIFDB_SNAPSHOT_THRESHOLD", func() string { return string(1024*1024*1024) })
+	verifyInt(snapshotThreshold)
+	snapshotBytes, _ := strconv.Atoi(snapshotThreshold)
+
+	retain := getEnvDefault(
+		"LEIFDB_RETAIN_N_SNAPSHOTS", func() string { return "1" })
+	verifyInt(retain)
+	retainNSnapshots, _ := strconv.Atoi(retain)
+	if retainNSnapshots < 1 {
+		panic(ErrInvalidNSnapshots)
+	}
+
 	return &ServerConfig{
 		Host:       host,
 		DataDir:    dataDir,
+		SnapshotThreshold: snapshotBytes,
+		RetainNSnapshots: retainNSnapshots,
 		RaftPort:   raftPort,
 		RaftAddr:   raftAddr,
 		ClientPort: clientPort,

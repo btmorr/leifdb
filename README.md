@@ -123,6 +123,12 @@ The gRPC interface is used for interactions between members of the Raft cluster.
 
 The persistent data directory is used for storing configuration files and non-volatile server state, and can be specified using the `LEIFDB_DATA_DIR` environment variable with a path. The path may point to a non-existent location, but cannot exactly match an existing file (an existing directory is fine). If no value is provided, "\$HOME/.leifdb/<addr_hash>" is used, where "<addr_hash>" is a non-cryptographic hash of the gRPC interface for the server (such that configuration is consistent for a server as long as it is deployed with the same hostname or IP address and same port specified by `LEIFDB_DATA_DIR`)
 
+### Snapshot threshold
+
+_[feature in progress]_
+
+When the log of database transactions reaches a certain size, the server will compact the logs by taking a snapshot of the database state and dropping log entries leading up to that point. Two environment variables govern this behavior: `LEIFDB_SNAPSHOT_THRESHOLD` is an integer number in bytes for how large the log file is allowed to grow before a snapshot is taken (default of 1073741824, which is equal to 1Gb), and `LEIFDB_RETAIN_N_SNAPSHOTS` is an integer for the number of snapshots to keep at a time (default of 1 and also minimum of 1). When a new snapshot is successfully created the snapshots will be counted and if there are more than the number specified then the oldest will be discarded.
+
 ### Cluster configuration
 
 In order to interact with other members of a raft cluster, each node must know the addresses for other members. Currently, this is not determined dynamically. In order to create a multi-node deployment, there must be two environment variables set:
