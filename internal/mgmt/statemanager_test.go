@@ -9,6 +9,8 @@ package mgmt
 import (
 	"testing"
 	"time"
+
+	"github.com/btmorr/leifdb/internal/node"
 )
 
 func TestManager(t *testing.T) {
@@ -37,7 +39,7 @@ func TestManager(t *testing.T) {
 			return
 		})
 
-	if mgmt.state.stateType() != Follower {
+	if mgmt.state.stateType() != node.Follower {
 		t.Errorf(
 			"Expected state to be Follower but got %s\n", mgmt.state.stateType())
 	}
@@ -46,7 +48,7 @@ func TestManager(t *testing.T) {
 	if electionCounter != 1 {
 		t.Errorf("Expected %d elections, got %d\n", 1, electionCounter)
 	}
-	if mgmt.state.stateType() != Leader {
+	if mgmt.state.stateType() != node.Leader {
 		t.Errorf(
 			"Expected state to be Leader after election, but got %s\n",
 			mgmt.state.stateType())
@@ -67,7 +69,7 @@ func TestManager(t *testing.T) {
 		resetFlag <- true
 	}()
 	time.Sleep(time.Millisecond * 2)
-	if mgmt.state.stateType() != Follower {
+	if mgmt.state.stateType() != node.Follower {
 		t.Errorf(
 			"Expected state to be Follower, but got %s\n", mgmt.state.stateType())
 	}
@@ -76,7 +78,7 @@ func TestManager(t *testing.T) {
 	if electionCounter != 2 {
 		t.Errorf("Expected %d elections, got %d\n", 2, electionCounter)
 	}
-	if mgmt.state.stateType() != Follower {
+	if mgmt.state.stateType() != node.Follower {
 		t.Errorf(
 			"Expected state to be Follower after failed election, but got %s\n",
 			mgmt.state.stateType())
@@ -96,7 +98,7 @@ func TestManager(t *testing.T) {
 	if electionCounter != 2 {
 		t.Errorf("Expected %d elections, got %d\n", 2, electionCounter)
 	}
-	if mgmt.state.stateType() != Follower {
+	if mgmt.state.stateType() != node.Follower {
 		t.Errorf(
 			"Expected state to still be Follower after resets, but got %s\n",
 			mgmt.state.stateType())

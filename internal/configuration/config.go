@@ -70,7 +70,7 @@ const (
 type ServerConfig struct {
 	Host              string
 	DataDir           string
-	SnapshotThreshold int
+	SnapshotThreshold int64
 	RetainNSnapshots  int
 	RaftPort          string
 	RaftAddr          string
@@ -225,9 +225,9 @@ func BuildServerConfig() *ServerConfig {
 
 	// by default, snapshot when log is 1Gb
 	snapshotThreshold := getEnvDefault(
-		"LEIFDB_SNAPSHOT_THRESHOLD", func() string { return string(1024 * 1024 * 1024) })
+		"LEIFDB_SNAPSHOT_THRESHOLD", func() string { return strconv.Itoa(1024 * 1024 * 1024) })
 	verifyInt(snapshotThreshold)
-	snapshotBytes, _ := strconv.Atoi(snapshotThreshold)
+	snapshotBytes, _ := strconv.ParseInt(snapshotThreshold, 10, 64)
 
 	retain := getEnvDefault(
 		"LEIFDB_RETAIN_N_SNAPSHOTS", func() string { return "1" })

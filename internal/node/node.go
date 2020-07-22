@@ -14,8 +14,17 @@ import (
 	"google.golang.org/grpc"
 
 	db "github.com/btmorr/leifdb/internal/database"
-	"github.com/btmorr/leifdb/internal/mgmt"
 	"github.com/btmorr/leifdb/internal/raft"
+)
+
+// Role is either Leader or Follower
+type Role string
+
+// Follower is a read-only member of a cluster
+// Leader is a read/write member of a cluster
+const (
+	Leader   Role = "Leader"
+	Follower      = "Follower"
 )
 
 var (
@@ -108,14 +117,14 @@ type ForeignNodeChecker func(string, map[string]*ForeignNode) bool
 // Follower state while an election is in progress)
 type Node struct {
 	RaftNode         *raft.Node
-	State            mgmt.Role
+	State            Role
 	Term             int64
 	votedFor         *raft.Node
 	Reset            chan bool
 	otherNodes       map[string]*ForeignNode
 	CheckForeignNode ForeignNodeChecker
 	AllowVote        bool
-	commitIndex      int64
+	CommitIndex      int64
 	lastApplied      int64
 	Log              *raft.LogStore
 	config           NodeConfig
@@ -212,7 +221,7 @@ func ReadLogs(filename string) *raft.LogStore {
 // signal to the reset channel (read by the StateManager, which controls the
 // timers used for elections)
 func (n *Node) resetElectionTimer() {
-	n.State = mgmt.Follower
+	n.State = Follower
 	go func() {
 		n.Reset <- true
 	}()
@@ -236,7 +245,7 @@ func (n *Node) setLog(newLogs []*raft.LogRecord) (int64, error) {
 // nodes fail via explicit rejection or timeout (which should generally result
 // in an election)
 func (n *Node) applyRecord(record *raft.LogRecord) error {
-	if n.State != mgmt.Leader {
+	if n.State != Leader {
 		return ErrNotLeaderRecv
 	}
 	newEntries := append(n.Log.Entries, record)
@@ -252,11 +261,11 @@ func (n *Node) applyRecord(record *raft.LogRecord) error {
 		log.Error().Err(err).Msg("applyRecord: Error shipping log")
 		return err
 	}
-	// verify that n.commitIndex >= idx
-	if n.commitIndex < idx {
+	// verify that n.CommitIndex >= idx
+	if n.CommitIndex < idx {
 		log.Error().Err(ErrCommitFailed).
 			Int64("recordIndex", idx).
-			Int64("commitIndex", n.commitIndex).
+			Int64("CommitIndex", n.CommitIndex).
 			Msg("Commit index failed to update after append")
 		return ErrCommitFailed
 	}
@@ -402,7 +411,7 @@ func (n *Node) DoElection() bool {
 			Bool("success", true).
 			Int64("term", n.Term).
 			Msg("Election succeeded")
-		n.State = mgmt.Leader
+		n.State = Leader
 		success = true
 		// StateManager grace window job sets this back to true
 		n.AllowVote = false
@@ -417,7 +426,7 @@ func (n *Node) DoElection() bool {
 
 // commitRecords iterates backward from last index of log entries, and finds
 // latest index that has been appended to a majority of nodes, and updates
-// the database and node commitIndex
+// the database and node CommitIndex
 func (n *Node) commitRecords() {
 	log.Trace().Msg("commitRecords")
 
@@ -429,9 +438,9 @@ func (n *Node) commitRecords() {
 	lastIdx := int64(len(n.Log.Entries) - 1)
 	log.Debug().
 		Int64("lastIndex", lastIdx).
-		Int64("commitIndex", n.commitIndex).
+		Int64("CommitIndex", n.CommitIndex).
 		Msgf("Checking for update to commit index")
-	for lastIdx > n.commitIndex {
+	for lastIdx > n.CommitIndex {
 		count := 1
 		for k := range n.otherNodes {
 			if n.otherNodes[k].MatchIndex >= lastIdx {
@@ -441,10 +450,10 @@ func (n *Node) commitRecords() {
 		log.Debug().Msgf("Applied to %d nodes", count)
 		if count >= majority {
 			log.Info().
-				Int64("prevCommitIndex", n.commitIndex).
+				Int64("prevCommitIndex", n.CommitIndex).
 				Int64("newCommitIndex", lastIdx).
 				Msgf("Updated commit index")
-			n.commitIndex = lastIdx
+			n.CommitIndex = lastIdx
 			break
 		}
 		lastIdx--
@@ -453,7 +462,7 @@ func (n *Node) commitRecords() {
 	log.Debug().
 		Int64("lastApplied", n.lastApplied).
 		Msg("Applying records to database")
-	for n.lastApplied < n.commitIndex {
+	for n.lastApplied < n.CommitIndex {
 		n.lastApplied++
 		action := n.Log.Entries[n.lastApplied].Action
 		key := n.Log.Entries[n.lastApplied].Key
@@ -501,9 +510,9 @@ func (n *Node) requestAppend(host string, term int64) error {
 		PrevLogIndex: prevLogIndex,
 		PrevLogTerm:  prevLogTerm,
 		Entries:      newEntries,
-		LeaderCommit: n.commitIndex}
+		LeaderCommit: n.CommitIndex}
 
-	if n.State != mgmt.Leader {
+	if n.State != Leader {
 		// escape hatch in case this node stepped down in between the call to
 		// `SendAppend` and this point
 		log.Debug().Msg("requestAppend not leader, returning")
@@ -546,7 +555,7 @@ func (n *Node) requestAppend(host string, term int64) error {
 // and updates database state on majority success
 func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 	log.Trace().Msgf("SendAppend(r%d)", retriesRemaining)
-	if n.State != mgmt.Leader {
+	if n.State != Leader {
 		log.Debug().Msg("SendAppend but not leader, returning")
 		return ErrNotLeaderSend
 	}
@@ -640,14 +649,14 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 			Id:         config.Id,
 			ClientAddr: config.ClientAddr,
 		},
-		State:            mgmt.Follower,
+		State:            Follower,
 		Term:             termRecord.Term,
 		votedFor:         termRecord.VotedFor,
 		Reset:            resetChannel,
 		otherNodes:       make(map[string]*ForeignNode),
 		CheckForeignNode: checkForeignNode,
 		AllowVote:        true,
-		commitIndex:      -1,
+		CommitIndex:      -1,
 		lastApplied:      -1,
 		Log:              logStore,
 		config:           config,
@@ -685,9 +694,9 @@ func (n *Node) availability() (int, int) {
 // the node's commit index (e.g.: candidate has all known committed entries), and
 // that the
 func (n *Node) candidateLogUpToDate(cLogIndex int64, cLogTerm int64) bool {
-	indexGreater := cLogIndex > n.commitIndex
-	indexEqual := cLogIndex == n.commitIndex
-	bothEmpty := cLogIndex == -1 && n.commitIndex == -1
+	indexGreater := cLogIndex > n.CommitIndex
+	indexEqual := cLogIndex == n.CommitIndex
+	bothEmpty := cLogIndex == -1 && n.CommitIndex == -1
 	indexPresent := cLogIndex < int64(len(n.Log.Entries))
 
 	upToDate := indexGreater ||
@@ -697,7 +706,7 @@ func (n *Node) candidateLogUpToDate(cLogIndex int64, cLogTerm int64) bool {
 	if !upToDate {
 		failLog := log.Debug().
 			Int64("CLogIdx", cLogIndex).
-			Int64("CommitIdx", n.commitIndex).
+			Int64("CommitIdx", n.CommitIndex).
 			Int64("CLogTerm", cLogTerm)
 		if indexPresent {
 			failLog.Int64("LogTerm", n.Log.Entries[cLogIndex].Term)
@@ -727,7 +736,7 @@ func (n *Node) HandleVote(req *raft.VoteRequest) *raft.VoteReply {
 		// not received an append request from this leader in its initial election
 		// window--shouldn't happen often, but if it does it would otherwise result
 		// in an otherwise unnecessary election)
-		if n.State == mgmt.Leader {
+		if n.State == Leader {
 			msg = msg + ", incrementing term"
 			n.SetTerm(n.Term+1, n.RaftNode)
 		}
@@ -814,10 +823,10 @@ func reconcileLogs(
 // applied, up to the new commit index
 func (n *Node) applyCommittedLogs(commitIdx int64) {
 	log.Debug().
-		Int64("current", n.commitIndex).
+		Int64("current", n.CommitIndex).
 		Int64("leader", commitIdx).
 		Msg("apply commits")
-	if commitIdx > n.commitIndex {
+	if commitIdx > n.CommitIndex {
 		// ensure we don't run over the end of the log
 		lastIndex := int64(len(n.Log.Entries))
 		if commitIdx > lastIndex {
@@ -825,12 +834,12 @@ func (n *Node) applyCommittedLogs(commitIdx int64) {
 		}
 
 		// apply all entries up to new commit index to store
-		for n.commitIndex < commitIdx {
-			n.commitIndex++
-			action := n.Log.Entries[n.commitIndex].Action
-			key := n.Log.Entries[n.commitIndex].Key
+		for n.CommitIndex < commitIdx {
+			n.CommitIndex++
+			action := n.Log.Entries[n.CommitIndex].Action
+			key := n.Log.Entries[n.CommitIndex].Key
 			if action == raft.LogRecord_SET {
-				value := n.Log.Entries[n.commitIndex].Value
+				value := n.Log.Entries[n.CommitIndex].Value
 				n.Store.Set(key, value)
 			} else if action == raft.LogRecord_DEL {
 				n.Store.Delete(key)
@@ -838,7 +847,7 @@ func (n *Node) applyCommittedLogs(commitIdx int64) {
 		}
 
 		log.Info().
-			Int64("commit", n.commitIndex).
+			Int64("commit", n.CommitIndex).
 			Msg("Commit updated")
 	}
 }
