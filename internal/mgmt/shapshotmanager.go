@@ -21,6 +21,8 @@ import (
 
 const prefix = "ldbsnapshot"
 
+// findExistingSnapshots returns a lexicographically sorted list of snapshot
+// files, along with the next available index number for snapshotting
 func findExistingSnapshots(dataDir string) ([]string, int) {
 	snapshotFiles := []string{}
 	nextIndex := 0
@@ -50,19 +52,21 @@ func findExistingSnapshots(dataDir string) ([]string, int) {
 	return snapshotFiles, nextIndex
 }
 
-func cloneAndSerialize(node *node.Node) ([]byte, error) {
+// cloneAndSerialize makes a copy of the current commit index and database
+// state, then returns a serialized version of the snapshot and the commit
+// index, or an error
+func cloneAndSerialize(node *node.Node) ([]byte, int64, error) {
 	node.Lock()
 	commitIndex := node.CommitIndex
 	clone := db.Clone(node.Store)
 	node.Unlock()
 
-	log.Info().
-		Int64("commit index", commitIndex).
-		Msg("doing snapshot")
-	return db.BuildSnapshot(clone)
+	snapshot, err := db.BuildSnapshot(clone)
+	return snapshot, commitIndex, err
 }
 
-func persistSnapshot(data []byte, filename string) error {
+// persist writes a byte array (the serialized snapshot) to disk
+func persist(data []byte, filename string) error {
 	f, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -78,37 +82,86 @@ func persistSnapshot(data []byte, filename string) error {
 	return nil
 }
 
+// dropOldSnapshots deletes lexicographically earliest snapshots until the
+// length of the list of snapshot files is less than or equal to the retain
+// parameter
+func dropOldSnapshots(snapshotFiles []string, retain int) []string {
+	for len(snapshotFiles) > retain {
+		drop := snapshotFiles[0]
+		log.Info().Str("filename", drop).Msg("removing snapshot")
+		err := os.Remove(drop)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("filename", drop).
+				Msg("error removing log file")
+		}
+		snapshotFiles = snapshotFiles[1:]
+	}
+	return snapshotFiles
+}
+
+// loadSnapshot fetches a snapshot as a byte array from the file specified,
+// initializes a database from the snapshot and installs it into the node
+func loadSnapshot(n *node.Node, snapshotPath string) error {
+	data, err := ioutil.ReadFile(snapshotPath)
+	if err != nil {
+		return err
+	}
+
+	newStore, err := db.InstallSnapshot(data)
+	if err != nil {
+		return err
+	}
+	n.Store = newStore
+	return nil
+}
+
 func StartSnapshotManager(
 	dataDir string,
 	logFile string,
 	threshold int64,
+	period time.Duration,
 	retain int,
-	node *node.Node) {
-	t := time.NewTicker(time.Minute)
+	n *node.Node) {
+	t := time.NewTicker(period)
 
 	snapshotFiles, nextIndex := findExistingSnapshots(dataDir)
+	if len(snapshotFiles) > 0 {
+		err := loadSnapshot(n, snapshotFiles[len(snapshotFiles)-1])
+		if err != nil {
+			log.Fatal().Err(err).Msg("error loading snapshot")
+		}
+	}
 
 	go func() {
 		for {
 			select {
 			case <-t.C:
-				// check file size
-				fi, _ := os.Stat(logFile)
+				fi, err := os.Stat(logFile)
+				if err != nil {
+					log.Debug().Msg("log file does not exists -- skipping snapshot")
+					continue
+				}
 				size := fi.Size()
 				log.Info().
 					Int64("log file size", size).
 					Int64("threshold", threshold).
 					Msg("snapshot check")
+
 				if size > threshold {
-					snapshot, err := cloneAndSerialize(node)
+					snapshot, commitIndex, err := cloneAndSerialize(n)
 					if err != nil {
 						log.Error().Err(err).Msg("error building snapshot")
 						continue
 					}
+					log.Debug().
+						Int64("commit index", commitIndex).
+						Msg("doing snapshot")
 
 					filename := fmt.Sprintf("%s%06d", prefix, nextIndex)
 					fullPath := filepath.Join(dataDir, filename)
-					err = persistSnapshot(snapshot, fullPath)
+					err = persist(snapshot, fullPath)
 					if err != nil {
 						log.Error().Err(err).Msg("error persisting snapshot")
 						continue
@@ -118,18 +171,8 @@ func StartSnapshotManager(
 					snapshotFiles = append(snapshotFiles, fullPath)
 					// todo: trigger node log compaction
 				}
-				for len(snapshotFiles) > retain {
-					drop := snapshotFiles[0]
-					log.Info().Str("filename", drop).Msg("removing snapshot")
-					err := os.Remove(drop)
-					if err != nil {
-						log.Error().
-							Err(err).
-							Str("filename", drop).
-							Msg("error removing log file")
-					}
-					snapshotFiles = snapshotFiles[1:]
-				}
+
+				snapshotFiles = dropOldSnapshots(snapshotFiles, retain)
 			default:
 			}
 		}

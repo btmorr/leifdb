@@ -76,26 +76,35 @@ func TestFindExisting(t *testing.T) {
 func TestCloneAndSerialize(t *testing.T) {
 	n := setupServer(t)
 	n.Store.Set("ice", "cream")
+	n.CommitIndex++
 	n.Store.Set("straw", "bale")
+	n.CommitIndex++
+
 	var snapshot []byte
+	var index int64
 	var err error
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
-		snapshot, err = cloneAndSerialize(n)
+		snapshot, index, err = cloneAndSerialize(n)
 		wg.Done()
 	}()
 	// simulate raft write starting during clone
 	time.Sleep(time.Microsecond * 50)
 	n.Lock()
 	n.Store.Set("straw", "berry")
+	n.CommitIndex++
 	n.Unlock()
 
 	wg.Wait()
 	reconstituted, err := db.InstallSnapshot(snapshot)
 	if err != nil {
 		t.Errorf("Error installing snapshot: %v\n", err)
+	}
+
+	if index != 1 {
+		t.Errorf("Next index after first snapshot should be 1, got %d\n", index)
 	}
 
 	ice := reconstituted.Get("ice")
