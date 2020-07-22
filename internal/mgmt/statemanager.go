@@ -1,15 +1,15 @@
 package mgmt
 
-import "time"
+// current design of StateManager is meant to decouple managers from Node,
+// but the behavioral needs are too closely coupled anyway. This module should
+// be simplified by allowing StateManager to have a reference to a Node.
+// Node should still not have any more awareness of StateManager, if for no
+// other reason than to prevent circular dependencies.
+// [todo: add a ref to Node and simplify StateManager logic]
+import (
+	"time"
 
-// Role is either Leader or Follower
-type Role string
-
-// Follower is a read-only member of a cluster
-// Leader is a read/write member of a cluster
-const (
-	Leader   Role = "Leader"
-	Follower      = "Follower"
+	"github.com/btmorr/leifdb/internal/node"
 )
 
 // There is also a virtual role of Candidate when an election is in progress,
@@ -18,7 +18,7 @@ const (
 type state interface {
 	stop()
 	restart()
-	stateType() Role
+	stateType() node.Role
 }
 
 type leaderState struct {
@@ -33,8 +33,8 @@ func (l *leaderState) stop() {
 
 func (l *leaderState) restart() {}
 
-func (l leaderState) stateType() Role {
-	return Leader
+func (l leaderState) stateType() node.Role {
+	return node.Leader
 }
 
 func newLeaderState(job func(), interval time.Duration, grace time.Duration, graceJob func()) *leaderState {
@@ -82,8 +82,8 @@ func (f *followerState) restart() {
 	return
 }
 
-func (f followerState) stateType() Role {
-	return Follower
+func (f followerState) stateType() node.Role {
+	return node.Follower
 }
 
 func newFollowerState(signal chan bool, timeout time.Duration) *followerState {
@@ -107,9 +107,9 @@ type StateManager struct {
 	appendJob       func()
 }
 
-func (s *StateManager) changeState(newState Role) {
+func (s *StateManager) changeState(newState node.Role) {
 	s.state.stop()
-	if newState == Leader {
+	if newState == node.Leader {
 		s.state = newLeaderState(s.appendJob, s.appendInterval, s.graceWindow, s.graceEndJob)
 	} else {
 		s.state = newFollowerState(s.electionFlag, s.electionTimeout)
@@ -124,7 +124,7 @@ func (s *StateManager) ResetTimer() {
 
 // BecomeFollower explicitly changes the state to Follower
 func (s *StateManager) BecomeFollower() {
-	s.changeState(Follower)
+	s.changeState(node.Follower)
 	s.graceEndJob()
 }
 
@@ -172,9 +172,9 @@ func NewStateManager(
 				// function should perform any side-effects that are unique to the
 				// Candidate state.
 				if electionJob() {
-					s.changeState(Leader)
+					s.changeState(node.Leader)
 				} else {
-					s.changeState(Follower)
+					s.changeState(node.Follower)
 				}
 			case <-resetFlag:
 				s.BecomeFollower()

@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	db "github.com/btmorr/leifdb/internal/database"
-	"github.com/btmorr/leifdb/internal/mgmt"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/btmorr/leifdb/internal/testutil"
@@ -247,7 +246,7 @@ type voteTestCase struct {
 	request         *raft.VoteRequest
 	expectTerm      int64
 	expectVote      bool
-	expectNodeState mgmt.Role
+	expectNodeState node.Role
 }
 
 func TestVote(t *testing.T) {
@@ -260,14 +259,14 @@ func TestVote(t *testing.T) {
 
 	s := server{Node: n}
 	// Simulating node in leader position, rather than adding a time.Sleep
-	n.State = mgmt.Leader
+	n.State = node.Leader
 	n.DoElection()
 	// mock behavior of StateManager
 	go func() {
 		for {
 			select {
 			case <-n.Reset:
-				n.State = mgmt.Follower
+				n.State = node.Follower
 			default:
 			}
 		}
@@ -283,7 +282,7 @@ func TestVote(t *testing.T) {
 				LastLogTerm:  0},
 			expectTerm:      2,
 			expectVote:      false,
-			expectNodeState: mgmt.Leader},
+			expectNodeState: node.Leader},
 		{
 			name: "Vote request valid",
 			request: &raft.VoteRequest{
@@ -293,7 +292,7 @@ func TestVote(t *testing.T) {
 				LastLogTerm:  0},
 			expectTerm:      3,
 			expectVote:      true,
-			expectNodeState: mgmt.Follower}}
+			expectNodeState: node.Follower}}
 
 	for _, tc := range testCases {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)

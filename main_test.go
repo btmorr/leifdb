@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	db "github.com/btmorr/leifdb/internal/database"
-	"github.com/btmorr/leifdb/internal/mgmt"
 	"github.com/btmorr/leifdb/internal/node"
 	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/btmorr/leifdb/internal/util"
@@ -39,7 +38,7 @@ func setupServer(t *testing.T) (*gin.Engine, *node.Node) {
 	config := node.NewNodeConfig(testDir, addr, clientAddr, make([]string, 0, 0))
 	n, _ := node.NewNode(config, store)
 	router := buildRouter(n)
-	n.State = mgmt.Leader
+	n.State = node.Leader
 	return router, n
 }
 
@@ -92,11 +91,11 @@ func TestReadAfterWrite(t *testing.T) {
 }
 
 func TestWriteRedirect(t *testing.T) {
-	router, node := setupServer(t)
+	router, n := setupServer(t)
 
 	// Change our node so we become a follower
-	node.State = mgmt.Follower
-	node.SetTerm(node.Term+1, &raft.Node{
+	n.State = node.Follower
+	n.SetTerm(n.Term+1, &raft.Node{
 		Id:         "localhost:16991",
 		ClientAddr: "localhost:8081",
 	})
@@ -183,11 +182,11 @@ func TestDelete(t *testing.T) {
 }
 
 func TestDeleteRedirect(t *testing.T) {
-	router, node := setupServer(t)
+	router, n := setupServer(t)
 
 	// Change our node so we become a follower
-	node.State = mgmt.Follower
-	node.SetTerm(node.Term+1, &raft.Node{
+	n.State = node.Follower
+	n.SetTerm(n.Term+1, &raft.Node{
 		Id:         "localhost:16991",
 		ClientAddr: "localhost:8081",
 	})

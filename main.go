@@ -121,7 +121,7 @@ func (ctl *Controller) handleWrite(c *gin.Context) {
 
 	// Short circuit, if we are not the leader right now, we return
 	// a redirect to the current presumptive leader
-	if ctl.Node.State != mgmt.Leader {
+	if ctl.Node.State != node.Leader {
 		// We could be in a state where we don't have a leader elected yet to
 		// redirect to, at this point this server can't do much
 		if ctl.Node.RedirectLeader() == "" {
@@ -161,7 +161,7 @@ func (ctl *Controller) handleDelete(c *gin.Context) {
 
 	// Short circuit, if we are not the leader right now, we return
 	// a redirect to the current presumptive leader
-	if ctl.Node.State != mgmt.Leader {
+	if ctl.Node.State != node.Leader {
 		// We could be in a state where we don't have a leader elected yet to
 		// redirect to, at this point this server can't do much
 		if ctl.Node.RedirectLeader() == "" {
@@ -253,10 +253,17 @@ func main() {
 		},
 		appendInterval, // Period for doing append job when Leader
 		func() {
-			if n.State == mgmt.Leader {
+			if n.State == node.Leader {
 				n.SendAppend(0, n.Term)
 			}
 		}) // Call when append ticker cycles
+
+	mgmt.StartSnapshotManager(
+		config.DataDir,
+		config.LogFile,
+		cfg.SnapshotThreshold,
+		cfg.RetainNSnapshots,
+		n)
 
 	raftPortString := fmt.Sprintf(":%s", cfg.RaftPort)
 	clientPortString := fmt.Sprintf(":%s", cfg.ClientPort)

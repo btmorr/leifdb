@@ -10,7 +10,6 @@ import (
 	"github.com/rs/zerolog"
 
 	db "github.com/btmorr/leifdb/internal/database"
-	"github.com/btmorr/leifdb/internal/mgmt"
 	"github.com/btmorr/leifdb/internal/raft"
 	"github.com/btmorr/leifdb/internal/testutil"
 	"github.com/btmorr/leifdb/internal/util"
@@ -59,7 +58,7 @@ func TestNewForeignNode(t *testing.T) {
 
 func TestAvailabilityReport(t *testing.T) {
 	n := setupNode(t)
-	n.State = mgmt.Leader
+	n.State = Leader
 
 	host1 := "localhost:12345"
 	host2 := "localhost:23456"
@@ -184,7 +183,7 @@ func TestVote(t *testing.T) {
 	n := setupNode(t)
 
 	// set up node as if it is Leader with two logs committed
-	n.State = mgmt.Leader
+	n.State = Leader
 	n.SetTerm(2, n.RaftNode)
 	n.Log = &raft.LogStore{
 		Entries: []*raft.LogRecord{
@@ -202,7 +201,7 @@ func TestVote(t *testing.T) {
 			},
 		},
 	}
-	n.commitIndex = 1
+	n.CommitIndex = 1
 
 	testRaftNode := &raft.Node{Id: "localhost:16999", ClientAddr: "localhost:8089"}
 
