@@ -228,6 +228,7 @@ func main() {
 	// todo: make these configurable
 	upperBound := 1000
 	lowerBound := upperBound / 2
+	snapshotPeriod := time.Minute
 
 	// Select random election timeout (in interval specified above), and set
 	// static interval for sending append requests
@@ -262,6 +263,7 @@ func main() {
 		config.DataDir,
 		config.LogFile,
 		cfg.SnapshotThreshold,
+		snapshotPeriod,
 		cfg.RetainNSnapshots,
 		n)
 

@@ -432,11 +432,10 @@ func (n *Node) commitRecords() {
 
 	numNodes := len(n.otherNodes)
 	majority := (numNodes / 2) + 1
-	log.Debug().Msgf("Need to apply message to %d nodes", majority)
+	log.Trace().Msgf("Need to apply message to %d nodes", majority)
 
-	// todo: find a more computationally efficient way to compute this
 	lastIdx := int64(len(n.Log.Entries) - 1)
-	log.Debug().
+	log.Trace().
 		Int64("lastIndex", lastIdx).
 		Int64("CommitIndex", n.CommitIndex).
 		Msgf("Checking for update to commit index")
@@ -447,7 +446,7 @@ func (n *Node) commitRecords() {
 				count++
 			}
 		}
-		log.Debug().Msgf("Applied to %d nodes", count)
+		log.Trace().Msgf("Applied to %d nodes", count)
 		if count >= majority {
 			log.Info().
 				Int64("prevCommitIndex", n.CommitIndex).
@@ -459,7 +458,7 @@ func (n *Node) commitRecords() {
 		lastIdx--
 	}
 	// if any records were committed, apply them to the database
-	log.Debug().
+	log.Trace().
 		Int64("lastApplied", n.lastApplied).
 		Msg("Applying records to database")
 	for n.lastApplied < n.CommitIndex {
@@ -468,13 +467,13 @@ func (n *Node) commitRecords() {
 		key := n.Log.Entries[n.lastApplied].Key
 		if action == raft.LogRecord_SET {
 			value := n.Log.Entries[n.lastApplied].Value
-			log.Debug().
+			log.Trace().
 				Str("key", key).
 				Str("value", value).
 				Msg("Db set")
 			n.Store.Set(key, value)
 		} else if action == raft.LogRecord_DEL {
-			log.Debug().
+			log.Trace().
 				Str("key", key).
 				Msg("Db del")
 			n.Store.Delete(key)
@@ -515,11 +514,11 @@ func (n *Node) requestAppend(host string, term int64) error {
 	if n.State != Leader {
 		// escape hatch in case this node stepped down in between the call to
 		// `SendAppend` and this point
-		log.Debug().Msg("requestAppend not leader, returning")
+		log.Trace().Msg("requestAppend not leader, returning")
 		return ErrNotLeaderSend
 	}
 	if term != n.Term {
-		log.Debug().
+		log.Trace().
 			Int64("req term", term).
 			Int64("node term", n.Term).
 			Str("state", string(n.State)).
@@ -556,15 +555,16 @@ func (n *Node) requestAppend(host string, term int64) error {
 func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 	log.Trace().Msgf("SendAppend(r%d)", retriesRemaining)
 	if n.State != Leader {
-		log.Debug().Msg("SendAppend but not leader, returning")
+		log.Trace().Msg("SendAppend but not leader, returning")
 		return ErrNotLeaderSend
 	}
 
 	numNodes := len(n.otherNodes)
 	majority := (numNodes / 2) + 1
 
-	log.Debug().Msgf("Number needed for append: %d", majority)
+	log.Trace().Msgf("Number needed for append: %d", majority)
 
+	var m sync.Mutex
 	numAppended := 1
 	// Send append out to all other nodes with new record(s)
 	var wg sync.WaitGroup
@@ -579,14 +579,15 @@ func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 				log.Debug().Err(err).Msgf(
 					"Error requesting append from %s for term %d", k, term)
 			} else {
-				// is this threadsafe?
+				m.Lock()
 				numAppended++
+				m.Unlock()
 			}
 		}(k)
 	}
 	wg.Wait()
 
-	log.Debug().Msgf("Appended to %d nodes", numAppended)
+	log.Trace().Msgf("Appended to %d nodes", numAppended)
 	if numAppended >= majority {
 		log.Trace().Msg("majority")
 		// update commit index on this node and apply newly committed records
@@ -605,8 +606,6 @@ func (n *Node) SendAppend(retriesRemaining int, term int64) error {
 
 // NewNodeConfig creates a config for a Node
 func NewNodeConfig(dataDir string, addr, clientAddr string, nodeIds []string) NodeConfig {
-	// todo: check dataDir. if it is empty, initialize Node with default
-	// values for non-volatile state. Otherwise, read values.
 	return NodeConfig{
 		Id:         addr,
 		ClientAddr: clientAddr,
