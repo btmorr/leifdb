@@ -3,12 +3,12 @@
 package mgmt
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	db "github.com/btmorr/leifdb/internal/database"
 	"github.com/btmorr/leifdb/internal/node"
@@ -86,14 +86,13 @@ func TestCloneAndSerialize(t *testing.T) {
 		snapshot, err = cloneAndSerialize(n)
 		wg.Done()
 	}()
-	// simulate raft write
+	// simulate raft write starting during clone
+	time.Sleep(time.Microsecond * 50)
 	n.Lock()
 	n.Store.Set("straw", "berry")
 	n.Unlock()
 
 	wg.Wait()
-	fmt.Println("=-------> snapshot <-------=")
-	fmt.Println(string(snapshot))
 	reconstituted, err := db.InstallSnapshot(snapshot)
 	if err != nil {
 		t.Errorf("Error installing snapshot: %v\n", err)
