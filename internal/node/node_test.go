@@ -547,3 +547,60 @@ func TestUpdateTermViaAppend(t *testing.T) {
 		t.Errorf("Expected voted for %s but got %s", otherNode.Id, n.votedFor.Id)
 	}
 }
+
+func TestCompactLogs(t *testing.T) {
+	n := setupNode(t)
+
+	// set up node as if it is Leader with two logs committed, one uncommitted
+	n.State = Leader
+	n.SetTerm(2, n.RaftNode)
+	n.Log = &raft.LogStore{
+		Entries: []*raft.LogRecord{
+			{
+				Term:   1,
+				Action: raft.LogRecord_SET,
+				Key:    "ah",
+				Value:  "one",
+			},
+			{
+				Term:   2,
+				Action: raft.LogRecord_SET,
+				Key:    "and ah",
+				Value:  "two",
+			},
+			{
+				Term:   2,
+				Action: raft.LogRecord_SET,
+				Key:    "and ah",
+				Value:  "ONE TWO THREE FOUR!",
+			},
+		},
+	}
+	n.CommitIndex = 1
+
+	snapshotIndex := n.CommitIndex
+	snapshotTerm := n.Log.Entries[n.CommitIndex].Term
+
+	err := n.CompactLogs(snapshotIndex, snapshotTerm)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if n.indexOffset != snapshotIndex+1 {
+		t.Errorf("Expected index offset of %d, got %d\n", snapshotIndex+1, n.indexOffset)
+	}
+	if n.lastSnapshotTerm != snapshotTerm {
+		t.Errorf("Expected term of %d, got %d\n", snapshotTerm, n.lastSnapshotTerm)
+	}
+	remaining := len(n.Log.Entries)
+	if remaining != 1 {
+		t.Errorf("Expected compacted log to have 1 entry, found %d\n", remaining)
+	}
+	if n.CommitIndex != -1 {
+		t.Errorf("Expected commit index of -1, got %d\n", n.CommitIndex)
+	}
+	sum := n.CommitIndex + n.indexOffset
+	if sum != snapshotIndex {
+		t.Errorf("Sum of commit index and offset (%d) should match previous commit index (%d)\n", sum, snapshotIndex)
+	}
+}

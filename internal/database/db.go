@@ -49,27 +49,44 @@ type pair struct {
 	V string
 }
 
+// Metadata includes the index and term of the last log entry included in the
+// snapshot
+type Metadata struct {
+	LastIndex int64
+	LastTerm  int64
+}
+
+type snapshot struct {
+	Records  []pair
+	Metadata Metadata
+}
+
 // BuildSnapshot serializes the database state into a JSON array of objects
 // with keys K and V and the key and value for each entry as respective values
-func BuildSnapshot(db *Database) ([]byte, error) {
+// and combines this with the provided metadata before returning the result
+func BuildSnapshot(db *Database, metadata Metadata) ([]byte, error) {
 	accumulator := []pair{}
 	db.underlying.Root().Walk(func(key []byte, value interface{}) bool {
 		accumulator = append(accumulator, pair{K: string(key), V: value.(string)})
 		return false
 	})
-	return json.Marshal(accumulator)
+	s := snapshot{
+		Records:  accumulator,
+		Metadata: metadata,
+	}
+	return json.Marshal(s)
 }
 
 // InstallSnapshot deserializes a JSON string (following the schema created by
 // BuildSnapshot) and returns a populated Database
 func InstallSnapshot(data []byte) (*Database, error) {
-	var pairs []pair
+	var s snapshot
 	db := NewDatabase()
 
-	if err := json.Unmarshal(data, &pairs); err != nil {
+	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, err
 	}
-	for _, p := range pairs {
+	for _, p := range s.Records {
 		db.Set(p.K, p.V)
 	}
 	return db, nil

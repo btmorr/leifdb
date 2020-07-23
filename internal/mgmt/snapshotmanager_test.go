@@ -75,27 +75,26 @@ func TestFindExisting(t *testing.T) {
 
 func TestCloneAndSerialize(t *testing.T) {
 	n := setupServer(t)
-	n.Store.Set("ice", "cream")
-	n.CommitIndex++
-	n.Store.Set("straw", "bale")
-	n.CommitIndex++
+	n.State = node.Leader
+	n.SetTerm(1, n.RaftNode)
+	n.Set("ice", "cream")
+	n.SetTerm(2, n.RaftNode)
+	n.Set("straw", "bale")
 
 	var snapshot []byte
-	var index int64
+	var metadata db.Metadata
 	var err error
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
-		snapshot, index, err = cloneAndSerialize(n)
+		snapshot, metadata, err = cloneAndSerialize(n)
 		wg.Done()
 	}()
 	// simulate raft write starting during clone
 	time.Sleep(time.Microsecond * 50)
-	n.Lock()
-	n.Store.Set("straw", "berry")
-	n.CommitIndex++
-	n.Unlock()
+	n.SetTerm(3, n.RaftNode)
+	n.Set("straw", "berry")
 
 	wg.Wait()
 	reconstituted, err := db.InstallSnapshot(snapshot)
@@ -103,8 +102,11 @@ func TestCloneAndSerialize(t *testing.T) {
 		t.Errorf("Error installing snapshot: %v\n", err)
 	}
 
-	if index != 1 {
-		t.Errorf("Next index after first snapshot should be 1, got %d\n", index)
+	if metadata.LastIndex != 1 {
+		t.Errorf("Last index should be 1, got %d\n", metadata.LastIndex)
+	}
+	if metadata.LastTerm != 2 {
+		t.Errorf("Last term should be 2, got %d\n", metadata.LastTerm)
 	}
 
 	ice := reconstituted.Get("ice")

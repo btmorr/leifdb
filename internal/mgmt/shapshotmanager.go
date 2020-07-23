@@ -53,16 +53,19 @@ func findExistingSnapshots(dataDir string) ([]string, int) {
 }
 
 // cloneAndSerialize makes a copy of the current commit index and database
-// state, then returns a serialized version of the snapshot and the commit
-// index, or an error
-func cloneAndSerialize(node *node.Node) ([]byte, int64, error) {
+// state, then returns a serialized version of the snapshot with metadata, or
+// an error
+func cloneAndSerialize(node *node.Node) ([]byte, db.Metadata, error) {
 	node.Lock()
 	commitIndex := node.CommitIndex
 	clone := db.Clone(node.Store)
 	node.Unlock()
 
-	snapshot, err := db.BuildSnapshot(clone)
-	return snapshot, commitIndex, err
+	lastTerm := node.Log.Entries[commitIndex].Term
+	metadata := db.Metadata{LastIndex: commitIndex, LastTerm: lastTerm}
+	snapshot, err := db.BuildSnapshot(clone, metadata)
+
+	return snapshot, metadata, err
 }
 
 // persist writes a byte array (the serialized snapshot) to disk
@@ -150,13 +153,14 @@ func StartSnapshotManager(
 					Msg("snapshot check")
 
 				if size > threshold {
-					snapshot, commitIndex, err := cloneAndSerialize(n)
+					snapshot, metadata, err := cloneAndSerialize(n)
 					if err != nil {
 						log.Error().Err(err).Msg("error building snapshot")
 						continue
 					}
 					log.Debug().
-						Int64("commit index", commitIndex).
+						Int64("index", metadata.LastIndex).
+						Int64("term", metadata.LastTerm).
 						Msg("doing snapshot")
 
 					filename := fmt.Sprintf("%s%06d", prefix, nextIndex)
@@ -169,7 +173,12 @@ func StartSnapshotManager(
 
 					nextIndex++
 					snapshotFiles = append(snapshotFiles, fullPath)
-					// todo: trigger node log compaction
+					err = n.CompactLogs(metadata.LastIndex, metadata.LastTerm)
+					if err != nil {
+						// should this be fatal? (snapshot exists but logs didn't get compacted)
+						log.Error().Err(err).Msg("error compacting logs")
+						continue
+					}
 				}
 
 				snapshotFiles = dropOldSnapshots(snapshotFiles, retain)

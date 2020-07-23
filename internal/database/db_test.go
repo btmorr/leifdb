@@ -63,7 +63,7 @@ func TestSnapshotRoundtrip(t *testing.T) {
 	d0.Set("2", "two")
 	d0.Set("3", "three")
 
-	snapshot, err := BuildSnapshot(d0)
+	snapshot, err := BuildSnapshot(d0, Metadata{2, 1})
 	if err != nil {
 		t.Errorf("Error in BuildSnapshot: %v\n", err)
 	}

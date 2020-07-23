@@ -126,6 +126,8 @@ type Node struct {
 	AllowVote        bool
 	CommitIndex      int64
 	lastApplied      int64
+	indexOffset      int64
+	lastSnapshotTerm int64
 	Log              *raft.LogStore
 	config           NodeConfig
 	Store            *db.Database
@@ -657,6 +659,8 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		AllowVote:        true,
 		CommitIndex:      -1,
 		lastApplied:      -1,
+		indexOffset:      0,
+		lastSnapshotTerm: -1,
 		Log:              logStore,
 		config:           config,
 		Store:            store}
@@ -896,10 +900,27 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 		// reset the election timer on append from a valid leader (even if
 		// not matched)--this duplicates the reset in `validateAppend`, in order to
 		// ensure that the time it takes to do all of the operations in this
-		// handler effectively happend "instantaneously" from the perspective of
+		// handler effectively happened "instantaneously" from the perspective of
 		// the election timeout
 		n.resetElectionTimer()
 	}
 	// finally
 	return &raft.AppendReply{Term: n.Term, Success: success}
+}
+
+// todo: modify both halves of log append rpc to add indexOffset to append index and commit index, and to check against lastSnapshotTerm if the log is empty
+func (n *Node) CompactLogs(lastIndex int64, lastTerm int64) error {
+	var err error
+	if int64(len(n.Log.Entries)) > lastIndex {
+		truncLog := n.Log.Entries[lastIndex+1:]
+		_, err = n.setLog(truncLog)
+	} else {
+		_, err = n.setLog([]*raft.LogRecord{})
+	}
+	if err == nil {
+		n.indexOffset = lastIndex + 1
+		n.lastSnapshotTerm = lastTerm
+		n.CommitIndex = n.CommitIndex - n.indexOffset
+	}
+	return err
 }
