@@ -55,13 +55,13 @@ func findExistingSnapshots(dataDir string) ([]string, int) {
 // cloneAndSerialize makes a copy of the current commit index and database
 // state, then returns a serialized version of the snapshot with metadata, or
 // an error
-func cloneAndSerialize(node *node.Node) ([]byte, db.Metadata, error) {
-	node.Lock()
-	commitIndex := node.CommitIndex
-	clone := db.Clone(node.Store)
-	node.Unlock()
+func cloneAndSerialize(n *node.Node) ([]byte, db.Metadata, error) {
+	n.Lock()
+	commitIndex := n.CommitIndex
+	clone := db.Clone(n.Store)
+	n.Unlock()
 
-	lastTerm := node.Log.Entries[commitIndex].Term
+	lastTerm := n.Log.Entries[commitIndex].Term
 	metadata := db.Metadata{LastIndex: commitIndex, LastTerm: lastTerm}
 	snapshot, err := db.BuildSnapshot(clone, metadata)
 
@@ -112,11 +112,13 @@ func loadSnapshot(n *node.Node, snapshotPath string) error {
 		return err
 	}
 
-	newStore, err := db.InstallSnapshot(data)
+	newStore, metadata, err := db.InstallSnapshot(data)
 	if err != nil {
 		return err
 	}
 	n.Store = newStore
+	n.IndexOffset = metadata.LastIndex
+	n.LastSnapshotTerm = metadata.LastTerm
 	return nil
 }
 

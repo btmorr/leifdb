@@ -84,7 +84,7 @@ type ReadResponse struct {
 // @Router /db/{key} [get]
 func (ctl *Controller) handleRead(c *gin.Context) {
 	key := c.Param("key")
-	value := ctl.Node.Store.Get(key)
+	value := ctl.Node.Get(key)
 
 	c.JSON(http.StatusOK, ReadResponse{Value: value})
 }
@@ -182,8 +182,6 @@ func (ctl *Controller) handleDelete(c *gin.Context) {
 
 // buildRouter hooks endpoints for Node/Database ops
 func buildRouter(n *node.Node) *gin.Engine {
-	// Distilled structure of how this is hooking the database:
-	// https://play.golang.org/p/c_wk9rQdJx8
 	ctl := NewController(n)
 
 	router := gin.Default()
@@ -255,7 +253,10 @@ func main() {
 		appendInterval, // Period for doing append job when Leader
 		func() {
 			if n.State == node.Leader {
-				n.SendAppend(0, n.Term)
+				err := n.SendAppend(0, n.Term)
+				if err != nil {
+					log.Error().Err(err).Msg("error appending logs")
+				}
 			}
 		}) // Call when append ticker cycles
 

@@ -82,13 +82,13 @@ func TestCloneAndSerialize(t *testing.T) {
 	n.Set("straw", "bale")
 
 	var snapshot []byte
-	var metadata db.Metadata
+	var metadata *db.Metadata
 	var err error
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
-		snapshot, metadata, err = cloneAndSerialize(n)
+		snapshot, _, err = cloneAndSerialize(n)
 		wg.Done()
 	}()
 	// simulate raft write starting during clone
@@ -97,7 +97,7 @@ func TestCloneAndSerialize(t *testing.T) {
 	n.Set("straw", "berry")
 
 	wg.Wait()
-	reconstituted, err := db.InstallSnapshot(snapshot)
+	reconstituted, metadata, err := db.InstallSnapshot(snapshot)
 	if err != nil {
 		t.Errorf("Error installing snapshot: %v\n", err)
 	}

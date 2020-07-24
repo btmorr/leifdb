@@ -63,15 +63,22 @@ func TestSnapshotRoundtrip(t *testing.T) {
 	d0.Set("2", "two")
 	d0.Set("3", "three")
 
-	snapshot, err := BuildSnapshot(d0, Metadata{2, 1})
+	meta := Metadata{2, 1}
+	snapshot, err := BuildSnapshot(d0, meta)
 	if err != nil {
 		t.Errorf("Error in BuildSnapshot: %v\n", err)
 	}
-	d1, err := InstallSnapshot(snapshot)
+	d1, meta1, err := InstallSnapshot(snapshot)
 	if err != nil {
 		t.Errorf("Error in InstallSnapshot: %v\n", err)
 	}
 
+	if meta.LastTerm != meta1.LastTerm {
+		t.Errorf("Metadata term expected %d, got %d\n", meta.LastTerm, meta1.LastTerm)
+	}
+	if meta.LastIndex != meta1.LastIndex {
+		t.Errorf("Metadata index expected %d, got %d\n", meta.LastIndex, meta1.LastIndex)
+	}
 	for _, key := range keys {
 		v0 := d0.Get(key)
 		v1 := d1.Get(key)

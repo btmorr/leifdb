@@ -580,17 +580,18 @@ func TestCompactLogs(t *testing.T) {
 
 	snapshotIndex := n.CommitIndex
 	snapshotTerm := n.Log.Entries[n.CommitIndex].Term
+	appliedIndex := n.lastApplied
 
 	err := n.CompactLogs(snapshotIndex, snapshotTerm)
 	if err != nil {
 		t.Error(err)
 	}
 
-	if n.indexOffset != snapshotIndex+1 {
-		t.Errorf("Expected index offset of %d, got %d\n", snapshotIndex+1, n.indexOffset)
+	if n.IndexOffset != snapshotIndex+1 {
+		t.Errorf("Expected index offset of %d, got %d\n", snapshotIndex+1, n.IndexOffset)
 	}
-	if n.lastSnapshotTerm != snapshotTerm {
-		t.Errorf("Expected term of %d, got %d\n", snapshotTerm, n.lastSnapshotTerm)
+	if n.LastSnapshotTerm != snapshotTerm {
+		t.Errorf("Expected term of %d, got %d\n", snapshotTerm, n.LastSnapshotTerm)
 	}
 	remaining := len(n.Log.Entries)
 	if remaining != 1 {
@@ -599,8 +600,12 @@ func TestCompactLogs(t *testing.T) {
 	if n.CommitIndex != -1 {
 		t.Errorf("Expected commit index of -1, got %d\n", n.CommitIndex)
 	}
-	sum := n.CommitIndex + n.indexOffset
+	sum := n.CommitIndex + n.IndexOffset
 	if sum != snapshotIndex {
 		t.Errorf("Sum of commit index and offset (%d) should match previous commit index (%d)\n", sum, snapshotIndex)
+	}
+	appliedSum := n.lastApplied + n.IndexOffset
+	if appliedSum != appliedIndex {
+		t.Errorf("Sum of last applied index and offset (%d) should match previous last applied index (%d)\n", appliedSum, appliedIndex)
 	}
 }

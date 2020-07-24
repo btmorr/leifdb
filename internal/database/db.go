@@ -78,16 +78,16 @@ func BuildSnapshot(db *Database, metadata Metadata) ([]byte, error) {
 }
 
 // InstallSnapshot deserializes a JSON string (following the schema created by
-// BuildSnapshot) and returns a populated Database
-func InstallSnapshot(data []byte) (*Database, error) {
+// BuildSnapshot) and returns a populated Database and Metadata
+func InstallSnapshot(data []byte) (*Database, *Metadata, error) {
 	var s snapshot
 	db := NewDatabase()
 
 	if err := json.Unmarshal(data, &s); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, p := range s.Records {
 		db.Set(p.K, p.V)
 	}
-	return db, nil
+	return db, &s.Metadata, nil
 }

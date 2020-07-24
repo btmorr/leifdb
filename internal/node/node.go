@@ -126,8 +126,8 @@ type Node struct {
 	AllowVote        bool
 	CommitIndex      int64
 	lastApplied      int64
-	indexOffset      int64
-	lastSnapshotTerm int64
+	IndexOffset      int64
+	LastSnapshotTerm int64
 	Log              *raft.LogStore
 	config           NodeConfig
 	Store            *db.Database
@@ -276,6 +276,11 @@ func (n *Node) applyRecord(record *raft.LogRecord) error {
 }
 
 // Client methods for managing raft state
+
+// Get reads an entry from the store
+func (n *Node) Get(key string) string {
+	return n.Store.Get(key)
+}
 
 // Set appends a write entry to the log record, and returns once the update is
 // applied to the state machine or an error is generated
@@ -469,13 +474,12 @@ func (n *Node) commitRecords() {
 		key := n.Log.Entries[n.lastApplied].Key
 		if action == raft.LogRecord_SET {
 			value := n.Log.Entries[n.lastApplied].Value
-			log.Trace().
+			log.Debug().
 				Str("key", key).
-				Str("value", value).
 				Msg("Db set")
 			n.Store.Set(key, value)
 		} else if action == raft.LogRecord_DEL {
-			log.Trace().
+			log.Debug().
 				Str("key", key).
 				Msg("Db del")
 			n.Store.Delete(key)
@@ -659,8 +663,8 @@ func NewNode(config NodeConfig, store *db.Database) (*Node, error) {
 		AllowVote:        true,
 		CommitIndex:      -1,
 		lastApplied:      -1,
-		indexOffset:      0,
-		lastSnapshotTerm: -1,
+		IndexOffset:      0,
+		LastSnapshotTerm: -1,
 		Log:              logStore,
 		config:           config,
 		Store:            store}
@@ -908,7 +912,7 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 	return &raft.AppendReply{Term: n.Term, Success: success}
 }
 
-// todo: modify both halves of log append rpc to add indexOffset to append index and commit index, and to check against lastSnapshotTerm if the log is empty
+// todo: modify both halves of log append rpc to add IndexOffset to append index and commit index, and to check against LastSnapshotTerm if the log is empty
 func (n *Node) CompactLogs(lastIndex int64, lastTerm int64) error {
 	var err error
 	if int64(len(n.Log.Entries)) > lastIndex {
@@ -918,9 +922,10 @@ func (n *Node) CompactLogs(lastIndex int64, lastTerm int64) error {
 		_, err = n.setLog([]*raft.LogRecord{})
 	}
 	if err == nil {
-		n.indexOffset = lastIndex + 1
-		n.lastSnapshotTerm = lastTerm
-		n.CommitIndex = n.CommitIndex - n.indexOffset
+		n.IndexOffset = lastIndex + 1
+		n.LastSnapshotTerm = lastTerm
+		n.CommitIndex = n.CommitIndex - n.IndexOffset
+		n.lastApplied = n.lastApplied - n.IndexOffset
 	}
 	return err
 }
