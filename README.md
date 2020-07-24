@@ -4,7 +4,7 @@
 [![License][license-badge]][license]
 [![Build Status][build-badge]][build]
 
-LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go. It has an [OpenAPIv2.0]-compatible HTTP interface for client interaction, and serves the schema for the client interface at the root HTTP endpoint to allow clients to discover and use endpoints programatically. In the near future, it will also employ erasure codes to improve performance and storage footprint, as described in the [CRaft] paper (check out the [milestones](https://github.com/btmorr/leifdb/milestones) to check on progress).
+LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go. It has an [OpenAPIv2.0]-compatible HTTP interface for client interaction, and serves the schema for the client interface at the root HTTP endpoint to allow clients to discover and use endpoints programmatically. In the near future, it will also employ erasure codes to improve performance and storage footprint, as described in the [CRaft] paper (check out the [milestones](https://github.com/btmorr/leifdb/milestones) to check on progress).
 
 The aim of this project is to build a distributed, consistent, fault-tolerant K-V store providing high throughput and minimizing storage footprint at large scale.
 

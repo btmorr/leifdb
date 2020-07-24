@@ -122,6 +122,11 @@ func loadSnapshot(n *node.Node, snapshotPath string) error {
 	return nil
 }
 
+// StartSnapshotManager checks for existing snapshots and installs the most
+// recent, and then monitors for when a new snapshot needs to be created.
+// When the criteria are met (node log larger than threshold), a new
+// snapshot is created and written to disk, logs in excess of the retain
+// parameter are dropped (oldest first), then the node's logs are compacted.
 func StartSnapshotManager(
 	dataDir string,
 	logFile string,
@@ -165,7 +170,7 @@ func StartSnapshotManager(
 						Int64("term", metadata.LastTerm).
 						Msg("doing snapshot")
 
-					filename := fmt.Sprintf("%s%06d", prefix, nextIndex)
+					filename := fmt.Sprintf("%s%09d", prefix, nextIndex)
 					fullPath := filepath.Join(dataDir, filename)
 					err = persist(snapshot, fullPath)
 					if err != nil {
