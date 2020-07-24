@@ -394,7 +394,8 @@ func TestReconcileLogs(t *testing.T) {
 				t.Errorf("Recovered panic in %s: %v", tc.Name, r)
 			}
 		}()
-		result := reconcileLogs(tc.Store, tc.Request)
+		result := reconcileLogs(
+			tc.Store, tc.Request.PrevLogIndex, tc.Request.Entries, tc.Request.Leader.Id)
 		testutil.CompareLogs(t, tc.Name, result, tc.Expected)
 	}
 }

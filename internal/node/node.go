@@ -51,6 +51,10 @@ var (
 	// ErrAppendRangeMet indicates that reverse-iteration has reached the
 	// beginning of the log and still not gotten a response--aborting
 	ErrAppendRangeMet = errors.New("Append range reached, not trying again")
+
+	// ErrFollowerBehind indicates that a follower is behind the current node's
+	// snapshot, and can't catch up via log append--send an InstallSnapshot
+	ErrFollowerBehind = errors.New("Follower is behind current snapshot")
 )
 
 // A ForeignNode is another member of the cluster, with connections needed
@@ -493,6 +497,12 @@ func (n *Node) requestAppend(host string, term int64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*12)
 	defer cancel()
 
+	// todo: once InstallSnapshot RPC message exists, foreign node match index
+	// todo: should be updated during log compaction, and nodes with a match
+	// todo: index less than -1 should get an InstallSnapshot (consider also
+	// todo: checking foreign node match index during compaction, and delay
+	// todo: compaction by some amount if followers are behind, to avoid
+	// todo: unnecessary InstallSnapshot messages, which may be large)
 	prevLogIndex := n.otherNodes[host].MatchIndex
 	// make a slice of all entries the other node has not seen (right after
 	// election, this will be all records--would it be better to query for
@@ -501,10 +511,24 @@ func (n *Node) requestAppend(host string, term int64) error {
 	// out the relationship between log size and message size and make a
 	// reasonable speculation about desired max message size)
 	idx := int64(len(n.Log.Entries))
-	newEntries := n.Log.Entries[prevLogIndex+1 : idx]
+	adjustedIndex := prevLogIndex - n.IndexOffset
+
+	var newEntries []*raft.LogRecord
+	if adjustedIndex < -1 && idx > 0 {
+		return ErrFollowerBehind
+	} else if idx == 0 {
+		newEntries = []*raft.LogRecord{}
+	} else {
+		newEntries = n.Log.Entries[adjustedIndex+1 : idx]
+	}
+
 	var prevLogTerm int64
 	if prevLogIndex >= 0 {
-		prevLogTerm = n.Log.Entries[prevLogIndex].Term
+		if len(n.Log.Entries) > 0 {
+			prevLogTerm = n.Log.Entries[adjustedIndex].Term
+		} else {
+			prevLogTerm = n.LastSnapshotTerm
+		}
 	} else {
 		prevLogTerm = 0
 	}
@@ -515,7 +539,7 @@ func (n *Node) requestAppend(host string, term int64) error {
 		PrevLogIndex: prevLogIndex,
 		PrevLogTerm:  prevLogTerm,
 		Entries:      newEntries,
-		LeaderCommit: n.CommitIndex}
+		LeaderCommit: n.CommitIndex + n.IndexOffset}
 
 	if n.State != Leader {
 		// escape hatch in case this node stepped down in between the call to
@@ -796,21 +820,24 @@ func (n *Node) validateAppend(term int64, leaderId string) bool {
 // If an existing entry conflicts with a new one (same idx diff term),
 // reconcileLogs deletes the existing entry and any that follow
 func reconcileLogs(
-	logStore *raft.LogStore, body *raft.AppendRequest) *raft.LogStore {
+	logStore *raft.LogStore,
+	prevLogIndex int64,
+	entries []*raft.LogRecord,
+	leaderId string) *raft.LogStore {
 	// note: don't memoize length of Entries, it changes multiple times
 	// during this method--safer to recalculate, and memoizing would
 	// only save a maximum of one pass so it's not worth it
 	var mismatchIdx int64
 	mismatchIdx = -1
-	if body.PrevLogIndex < int64(len(logStore.Entries)-1) {
-		overlappingEntries := logStore.Entries[body.PrevLogIndex+1:]
+	if prevLogIndex < int64(len(logStore.Entries)-1) {
+		overlappingEntries := logStore.Entries[prevLogIndex+1:]
 		for i, rec := range overlappingEntries {
-			if i >= len(body.Entries) {
-				mismatchIdx = body.PrevLogIndex + int64(i)
+			if i >= len(entries) {
+				mismatchIdx = prevLogIndex + int64(i)
 				break
 			}
-			if rec.Term != body.Entries[i].Term {
-				mismatchIdx = body.PrevLogIndex + 1 + int64(i)
+			if rec.Term != entries[i].Term {
+				mismatchIdx = prevLogIndex + 1 + int64(i)
 				break
 			}
 		}
@@ -820,9 +847,9 @@ func reconcileLogs(
 		logStore.Entries = logStore.Entries[:mismatchIdx]
 	}
 	// append any entries not already in log
-	offset := int64(len(logStore.Entries)-1) - body.PrevLogIndex
-	newLogs := body.Entries[offset:]
-	log.Info().Msgf("Appending %d entries from %s", len(newLogs), body.Leader.Id)
+	offset := int64(len(logStore.Entries)-1) - prevLogIndex
+	newLogs := entries[offset:]
+	log.Info().Msgf("Appending %d entries from %s", len(newLogs), leaderId)
 	return &raft.LogStore{Entries: append(logStore.Entries, newLogs...)}
 }
 
@@ -865,8 +892,18 @@ func (n *Node) checkPrevious(prevIndex int64, prevTerm int64) bool {
 	if prevIndex < 0 {
 		return true
 	}
-	inRange := prevIndex < int64(len(n.Log.Entries))
-	matches := n.Log.Entries[prevIndex].Term == prevTerm
+	inRange := prevIndex < int64(len(n.Log.Entries))+n.IndexOffset
+
+	var matches bool
+	if len(n.Log.Entries) == 0 && n.IndexOffset > 0 {
+		// if no logs have been written since most recent snapshot, compare to
+		// snapshot metadata
+		matches = n.LastSnapshotTerm == prevTerm
+	} else {
+		// otherwise compare against log
+		matches = n.Log.Entries[prevIndex-n.IndexOffset].Term == prevTerm
+	}
+
 	return inRange && matches
 }
 
@@ -886,10 +923,12 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 		// Valid request, and all required logs present
 
 		if len(req.Entries) > 0 {
-			n.Log = reconcileLogs(n.Log, req)
+			adjustedIndex := req.PrevLogIndex - n.IndexOffset
+			n.Log = reconcileLogs(n.Log, adjustedIndex, req.Entries, req.Leader.Id)
 			n.setLog(n.Log.Entries)
 		}
-		n.applyCommittedLogs(req.LeaderCommit)
+		adjustedCommit := req.LeaderCommit - n.IndexOffset
+		n.applyCommittedLogs(adjustedCommit)
 		success = true
 	}
 	if valid {
