@@ -53,16 +53,19 @@ func findExistingSnapshots(dataDir string) ([]string, int) {
 }
 
 // cloneAndSerialize makes a copy of the current commit index and database
-// state, then returns a serialized version of the snapshot and the commit
-// index, or an error
-func cloneAndSerialize(node *node.Node) ([]byte, int64, error) {
-	node.Lock()
-	commitIndex := node.CommitIndex
-	clone := db.Clone(node.Store)
-	node.Unlock()
+// state, then returns a serialized version of the snapshot with metadata, or
+// an error
+func cloneAndSerialize(n *node.Node) ([]byte, db.Metadata, error) {
+	n.Lock()
+	commitIndex := n.CommitIndex
+	clone := db.Clone(n.Store)
+	n.Unlock()
 
-	snapshot, err := db.BuildSnapshot(clone)
-	return snapshot, commitIndex, err
+	lastTerm := n.Log.Entries[commitIndex].Term
+	metadata := db.Metadata{LastIndex: commitIndex, LastTerm: lastTerm}
+	snapshot, err := db.BuildSnapshot(clone, metadata)
+
+	return snapshot, metadata, err
 }
 
 // persist writes a byte array (the serialized snapshot) to disk
@@ -109,14 +112,21 @@ func loadSnapshot(n *node.Node, snapshotPath string) error {
 		return err
 	}
 
-	newStore, err := db.InstallSnapshot(data)
+	newStore, metadata, err := db.InstallSnapshot(data)
 	if err != nil {
 		return err
 	}
 	n.Store = newStore
+	n.IndexOffset = metadata.LastIndex
+	n.LastSnapshotTerm = metadata.LastTerm
 	return nil
 }
 
+// StartSnapshotManager checks for existing snapshots and installs the most
+// recent, and then monitors for when a new snapshot needs to be created.
+// When the criteria are met (node log larger than threshold), a new
+// snapshot is created and written to disk, logs in excess of the retain
+// parameter are dropped (oldest first), then the node's logs are compacted.
 func StartSnapshotManager(
 	dataDir string,
 	logFile string,
@@ -150,16 +160,17 @@ func StartSnapshotManager(
 					Msg("snapshot check")
 
 				if size > threshold {
-					snapshot, commitIndex, err := cloneAndSerialize(n)
+					snapshot, metadata, err := cloneAndSerialize(n)
 					if err != nil {
 						log.Error().Err(err).Msg("error building snapshot")
 						continue
 					}
 					log.Debug().
-						Int64("commit index", commitIndex).
+						Int64("index", metadata.LastIndex).
+						Int64("term", metadata.LastTerm).
 						Msg("doing snapshot")
 
-					filename := fmt.Sprintf("%s%06d", prefix, nextIndex)
+					filename := fmt.Sprintf("%s%09d", prefix, nextIndex)
 					fullPath := filepath.Join(dataDir, filename)
 					err = persist(snapshot, fullPath)
 					if err != nil {
@@ -169,7 +180,12 @@ func StartSnapshotManager(
 
 					nextIndex++
 					snapshotFiles = append(snapshotFiles, fullPath)
-					// todo: trigger node log compaction
+					err = n.CompactLogs(metadata.LastIndex, metadata.LastTerm)
+					if err != nil {
+						// should this be fatal? (snapshot exists but logs didn't get compacted)
+						log.Error().Err(err).Msg("error compacting logs")
+						continue
+					}
 				}
 
 				snapshotFiles = dropOldSnapshots(snapshotFiles, retain)

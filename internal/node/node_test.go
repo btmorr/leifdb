@@ -394,7 +394,8 @@ func TestReconcileLogs(t *testing.T) {
 				t.Errorf("Recovered panic in %s: %v", tc.Name, r)
 			}
 		}()
-		result := reconcileLogs(tc.Store, tc.Request)
+		result := reconcileLogs(
+			tc.Store, tc.Request.PrevLogIndex, tc.Request.Entries, tc.Request.Leader.Id)
 		testutil.CompareLogs(t, tc.Name, result, tc.Expected)
 	}
 }
@@ -545,5 +546,67 @@ func TestUpdateTermViaAppend(t *testing.T) {
 	}
 	if n.votedFor.Id != otherNode.Id {
 		t.Errorf("Expected voted for %s but got %s", otherNode.Id, n.votedFor.Id)
+	}
+}
+
+func TestCompactLogs(t *testing.T) {
+	n := setupNode(t)
+
+	// set up node as if it is Leader with two logs committed, one uncommitted
+	n.State = Leader
+	n.SetTerm(2, n.RaftNode)
+	n.Log = &raft.LogStore{
+		Entries: []*raft.LogRecord{
+			{
+				Term:   1,
+				Action: raft.LogRecord_SET,
+				Key:    "ah",
+				Value:  "one",
+			},
+			{
+				Term:   2,
+				Action: raft.LogRecord_SET,
+				Key:    "and ah",
+				Value:  "two",
+			},
+			{
+				Term:   2,
+				Action: raft.LogRecord_SET,
+				Key:    "and ah",
+				Value:  "ONE TWO THREE FOUR!",
+			},
+		},
+	}
+	n.CommitIndex = 1
+
+	snapshotIndex := n.CommitIndex
+	snapshotTerm := n.Log.Entries[n.CommitIndex].Term
+	appliedIndex := n.lastApplied
+
+	err := n.CompactLogs(snapshotIndex, snapshotTerm)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if n.IndexOffset != snapshotIndex+1 {
+		t.Errorf("Expected index offset of %d, got %d\n", snapshotIndex+1, n.IndexOffset)
+	}
+	if n.LastSnapshotTerm != snapshotTerm {
+		t.Errorf("Expected term of %d, got %d\n", snapshotTerm, n.LastSnapshotTerm)
+	}
+	remaining := len(n.Log.Entries)
+	if remaining != 1 {
+		t.Errorf("Expected compacted log to have 1 entry, found %d\n", remaining)
+	}
+	if n.CommitIndex != -1 {
+		t.Errorf("Expected commit index of -1, got %d\n", n.CommitIndex)
+	}
+	sum := n.CommitIndex + n.IndexOffset
+	if sum != snapshotIndex {
+		t.Errorf("Sum of commit index and offset (%d) should match previous commit index (%d)\n", sum, snapshotIndex)
+	}
+	appliedSum := n.lastApplied + n.IndexOffset
+	if appliedSum != appliedIndex {
+		t.Errorf("Sum of last applied index and offset (%d) should match previous last applied index (%d)\n", appliedSum, appliedIndex)
 	}
 }
