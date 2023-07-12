@@ -14,11 +14,8 @@ require (
 	github.com/rs/zerolog v1.19.0
 	github.com/swaggo/gin-swagger v1.2.0
 	github.com/swaggo/swag v1.6.7
-	golang.org/x/net v0.0.0-20200625001655-4c5254603344 // indirect
-	golang.org/x/text v0.3.3 // indirect
-	golang.org/x/tools v0.0.0-20200701221012-f01a4bec33ec // indirect
+	golang.org/x/net v0.7.0 // indirect
 	google.golang.org/grpc v1.29.1
-	google.golang.org/grpc/cmd/protoc-gen-go-grpc v0.0.0-20200630190442-3de8449f8555 // indirect
 	google.golang.org/protobuf v1.24.0
 	gopkg.in/yaml.v2 v2.3.0 // indirect
 )
