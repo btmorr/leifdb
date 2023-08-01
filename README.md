@@ -2,9 +2,9 @@
 
 [![Go Report Card][report-card-badge]][report-card]
 [![License][license-badge]][license]
-[![Build Status][build-badge]][build]
+[![CircleCI][build-badge]][build]
 
-LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go. It has an [OpenAPIv2.0]-compatible HTTP interface for client interaction, and serves the schema for the client interface at the root HTTP endpoint to allow clients to discover and use endpoints programatically. In the near future, it will also employ erasure codes to improve performance and storage footprint, as described in the [CRaft] paper (check out the [milestones](https://github.com/btmorr/leifdb/milestones) to check on progress).
+LeifDb a clustered K-V store application that implements [Raft] for consistency, in Go. It has an [OpenAPIv2.0]-compatible HTTP interface for client interaction, and serves the schema for the client interface at the root HTTP endpoint to allow clients to discover and use endpoints programmatically. In the near future, it will also employ erasure codes to improve performance and storage footprint, as described in the [CRaft] paper (check out the [milestones](https://github.com/btmorr/leifdb/milestones) to check on progress).
 
 The aim of this project is to build a distributed, consistent, fault-tolerant K-V store providing high throughput and minimizing storage footprint at large scale.
 
@@ -12,7 +12,7 @@ Contributions are welcome! Check out the [Contributing Guide] for more info on h
 
 ## Install
 
-This project requires Go 1.14.x and the [swaggo/swag] cli tool, and modifying some elements requires protobuf. If you do not have these installed, see the instructions in the [Contributing Guide].
+This project requires Go 1.14.x+ and the [swaggo/swag] cli tool, and modifying some elements requires protobuf. If you do not have these installed, see the instructions in the [Contributing Guide].
 
 ## Build and run
 
@@ -230,7 +230,6 @@ Aside from the Raft papers themselves ([short] and [extended]) and the [CRaft] p
 [report-card-badge]: https://goreportcard.com/badge/github.com/btmorr/leifdb
 [license]: https://github.com/btmorr/leifdb/LICENSE
 [license-badge]: https://img.shields.io/github/license/btmorr/leifdb.svg
-[build]: https://travis-ci.com/btmorr/leifdb
-[build-badge]: https://travis-ci.com/btmorr/leifdb.svg?branch=edge
+[build]: https://dl.circleci.com/status-badge/redirect/gh/btmorr/leifdb/tree/edge
+[build-badge]: https://dl.circleci.com/status-badge/img/gh/btmorr/leifdb/tree/edge.svg?style=svg
 [contributing guide]: ./CONTRIBUTING.md
-[example config file]: ./config/default_config.toml

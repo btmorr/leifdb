@@ -33,7 +33,7 @@ Finally, remember to add yourself to the [contributors section below](#contribut
 
 ### Build and run environment
 
-Go v1.14 is the only strict requirement for this project. You can find instructions on getting and installing Go [here](https://golang.org/dl/).
+Go v1.14+ is the only strict requirement for this project. You can find instructions on getting and installing Go [here](https://golang.org/dl/).
 
 If you want to change something in a probobuf definition, you'll also need protoc and the protoc-gen-go plugin.
 
@@ -54,7 +54,7 @@ Additionally this repo includes a Makefile with tasks for common workflows. Your
 
 Especially on Windows, there are many ways of installing make (such as with [Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/about), getting a binary from the [GNU Make for Windows](http://gnuwin32.sourceforge.net/packages/make.htm) page, etc.--I'm not going to cover them all here, but you can use what works best for you.
 
-Likewise, this project is not opinionated about how you edit code. Use `vim` or `emacs`, [Atom](https://atom.io), [Sublime Text](https://www.sublimetext.com/), or a full IDE--whatever is most comfortable for you.
+Likewise, this project is not opinionated about how you edit code. Use `vim` or `emacs`, [Sublime Text](https://www.sublimetext.com/), or a full IDE--whatever is most comfortable for you.
 
 ### Project structure
 
