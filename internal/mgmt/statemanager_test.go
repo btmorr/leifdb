@@ -1,4 +1,4 @@
-// +build mgmttest
+//go:build mgmttest
 
 // This test is timing-dependent, and fails if run along with the rest of the
 // test suite. Until we have a better way of testing the timer logic, this test

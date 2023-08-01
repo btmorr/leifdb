@@ -33,7 +33,7 @@ Finally, remember to add yourself to the [contributors section below](#contribut
 
 ### Build and run environment
 
-Go v1.14+ is the only strict requirement for this project. You can find instructions on getting and installing Go [here](https://golang.org/dl/).
+Go v1.17+ is the only strict requirement for this project. You can find instructions on getting and installing Go [here](https://golang.org/dl/).
 
 If you want to change something in a probobuf definition, you'll also need protoc and the protoc-gen-go plugin.
 

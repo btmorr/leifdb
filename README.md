@@ -12,7 +12,7 @@ Contributions are welcome! Check out the [Contributing Guide] for more info on h
 
 ## Install
 
-This project requires Go 1.14.x+ and the [swaggo/swag] cli tool, and modifying some elements requires protobuf. If you do not have these installed, see the instructions in the [Contributing Guide].
+This project requires Go 1.17.x+ and the [swaggo/swag] cli tool, and modifying some elements requires protobuf. If you do not have these installed, see the instructions in the [Contributing Guide].
 
 ## Build and run
 
@@ -23,6 +23,26 @@ make
 ```
 
 This will clean, build, and test the code (make tasks may not currently work on Windows without [Windows Subsystem for Linux] or Git Bash terminal).
+
+If you prefer not to use `make`, then the tests can be run using the following commands:
+
+```
+go test -v --tags=unit ./...
+go test -v --tags=mgmttest ./...
+```
+
+If you do not modify any .proto files, then you can build using:
+
+```
+GOOS=linux GOARCH=amd64 go build -ldflags "-X 'main.LeifDBVersion={version}'" -o leifdb
+```
+
+replacing `{version}` with a version number. Then, to run the server in docker:
+
+```
+docker build -t leifdb:{version} .
+docker run -t leifdb:{version}
+```
 
 To run the database run this command, replacing "\<version>" with the current version number:
 
@@ -231,5 +251,5 @@ Aside from the Raft papers themselves ([short] and [extended]) and the [CRaft] p
 [license]: https://github.com/btmorr/leifdb/LICENSE
 [license-badge]: https://img.shields.io/github/license/btmorr/leifdb.svg
 [build]: https://dl.circleci.com/status-badge/redirect/gh/btmorr/leifdb/tree/main
-[build-badge]: https://dl.circleci.com/status-badge/img/gh/btmorr/leifdb/tree/main.svg?style=svg
+[build-badge]: https://dl.circleci.com/status-badge/img/gh/btmorr/leifdb/tree/main.svg?style=shield
 [contributing guide]: ./CONTRIBUTING.md

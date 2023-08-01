@@ -1,4 +1,4 @@
-// +build ignore
+//go:build ignore
 
 // Creating an object that can be used to call methods from another object
 // Used in this application for building an HTTP rounter that can call

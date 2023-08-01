@@ -1,4 +1,4 @@
-// +build ignore
+//go:build ignore
 
 // demonstration of a more coherent state machine manager
 
