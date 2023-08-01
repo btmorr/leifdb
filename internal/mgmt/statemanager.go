@@ -130,15 +130,20 @@ func (s *StateManager) BecomeFollower() {
 
 // NewStateManager creates a StateManager with state initialized to Follower
 // followFlag is a channel that indicates the node should reset the election
-//    timer, including becoming a Follower if the current state is Leader
+// timer, including becoming a Follower if the current state is Leader
+//
 // electionTimeout is the duration a node should wait before starting an
-//     election. Events that delay an election should call `ResetTimer`. If the
-//     timer expires, the electionJob function is called
+// election. Events that delay an election should call `ResetTimer`. If the
+// timer expires, the electionJob function is called
+//
 // electionJob is a function that is called when the election timer expires,
-//     which should return a boolean designating whether the node should become
-//     a Leader (on true), or remain a Follower (on false)
+// which should return a boolean designating whether the node should become
+// a Leader (on true), or remain a Follower (on false)
+//
 // appendInterval is the period between append requests when a node is a Leader
-//    The ticker ticks on this period, and calls appendJob
+//
+// The ticker ticks on this period, and calls appendJob
+//
 // appendJob is the task that a Leader should perform after each appendInterval
 func NewStateManager(
 	resetFlag chan bool,
