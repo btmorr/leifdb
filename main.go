@@ -34,7 +34,7 @@ var (
 // @version 0.1
 // @description A distributed K-V store using the Raft protocol
 // @license.name MIT
-// @license.url https://github.com/btmorr/leifdb/blob/edge/LICENSE
+// @license.url https://github.com/btmorr/leifdb/blob/main/LICENSE
 
 // Controller wraps routes for HTTP interface
 type Controller struct {

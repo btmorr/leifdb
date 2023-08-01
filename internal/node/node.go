@@ -896,7 +896,7 @@ func (n *Node) HandleAppend(req *raft.AppendRequest) *raft.AppendReply {
 		// reset the election timer on append from a valid leader (even if
 		// not matched)--this duplicates the reset in `validateAppend`, in order to
 		// ensure that the time it takes to do all of the operations in this
-		// handler effectively happend "instantaneously" from the perspective of
+		// handler effectively happened "instantaneously" from the perspective of
 		// the election timeout
 		n.resetElectionTimer()
 	}

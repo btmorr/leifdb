@@ -230,6 +230,6 @@ Aside from the Raft papers themselves ([short] and [extended]) and the [CRaft] p
 [report-card-badge]: https://goreportcard.com/badge/github.com/btmorr/leifdb
 [license]: https://github.com/btmorr/leifdb/LICENSE
 [license-badge]: https://img.shields.io/github/license/btmorr/leifdb.svg
-[build]: https://dl.circleci.com/status-badge/redirect/gh/btmorr/leifdb/tree/edge
-[build-badge]: https://dl.circleci.com/status-badge/img/gh/btmorr/leifdb/tree/edge.svg?style=svg
+[build]: https://dl.circleci.com/status-badge/redirect/gh/btmorr/leifdb/tree/main
+[build-badge]: https://dl.circleci.com/status-badge/img/gh/btmorr/leifdb/tree/main.svg?style=svg
 [contributing guide]: ./CONTRIBUTING.md

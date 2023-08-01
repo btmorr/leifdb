@@ -4,7 +4,7 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD | sed 's/\//-/')
 SHORT_HASH=$(git rev-parse --short HEAD)
 VERSION="0.2.0-beta.1"
 
-if [ $BRANCH == "edge" ]
+if [ $BRANCH == "main" ]
 then
     echo $VERSION
 else

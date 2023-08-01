@@ -21,7 +21,7 @@ var doc = `{
         "contact": {},
         "license": {
             "name": "MIT",
-            "url": "https://github.com/btmorr/leifdb/blob/edge/LICENSE"
+            "url": "https://github.com/btmorr/leifdb/blob/main/LICENSE"
         },
         "version": "{{.Version}}"
     },
