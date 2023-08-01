@@ -142,7 +142,7 @@ func (s *StateManager) BecomeFollower() {
 //
 // appendInterval is the period between append requests when a node is a Leader
 //
-// The ticker ticks on this period, and calls appendJob
+// # The ticker ticks on this period, and calls appendJob
 //
 // appendJob is the task that a Leader should perform after each appendInterval
 func NewStateManager(
