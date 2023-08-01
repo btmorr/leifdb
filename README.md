@@ -1,6 +1,5 @@
 # LeifDB
 
-[![Go Report Card][report-card-badge]][report-card]
 [![License][license-badge]][license]
 [![CircleCI][build-badge]][build]
 
@@ -246,8 +245,6 @@ Aside from the Raft papers themselves ([short] and [extended]) and the [CRaft] p
 [gin-gonic/gin]: https://pkg.go.dev/github.com/gin-gonic/gin?tab=overview
 [preflight requests]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 [windows subsystem for linux]: https://docs.microsoft.com/en-us/windows/wsl/about
-[report-card]: https://goreportcard.com/report/github.com/btmorr/leifdb
-[report-card-badge]: https://goreportcard.com/badge/github.com/btmorr/leifdb
 [license]: https://github.com/btmorr/leifdb/LICENSE
 [license-badge]: https://img.shields.io/github/license/btmorr/leifdb.svg
 [build]: https://dl.circleci.com/status-badge/redirect/gh/btmorr/leifdb/tree/main
