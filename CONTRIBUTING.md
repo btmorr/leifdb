@@ -64,7 +64,7 @@ To help understand the project layout further, or to modify it, check out the RE
 
 ### Versioning and release
 
-The version number is currently determined by a variable in "version.sh". The `make app` command builds a binary that includes this version number (and also the name of the current git branch, if not "edge"). Remember to update this variable before tagging a commit as a release in GitHub, and also make sure the new tag matches the variable.
+The version number is currently determined by a variable in "version.sh". The `make app` command builds a binary that includes this version number (and also the name of the current git branch, if not "main"). Remember to update this variable before tagging a commit as a release in GitHub, and also make sure the new tag matches the variable.
 
 ## Maintainers
 

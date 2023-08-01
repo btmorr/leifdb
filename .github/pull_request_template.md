@@ -16,5 +16,5 @@ cc: @btmorr
   take a look in the Contributing Guide, or go ahead and post and
   the maintainers will help out as much as possible.
 
-  https://github.com/btmorr/leifdb/blob/edge/CONTRIBUTING.md
+  https://github.com/btmorr/leifdb/blob/main/CONTRIBUTING.md
 -->
